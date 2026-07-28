@@ -1,0 +1,21 @@
+* text=auto eol=lf
+
+*.cs text eol=lf
+*.cshtml text eol=lf
+*.json text eol=lf
+*.csproj text eol=lf
+*.sln text eol=lf
+*.http text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.dll binary
+*.exe binary
+*.pdb binary

@@ -1,0 +1,241 @@
+dot<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Test AI Integration</title>
+    <style>
+        :root {
+            --bg: #f5efe3;
+            --panel: #fffaf2;
+            --panel-border: #d8c8aa;
+            --text: #1f1a14;
+            --muted: #6a5a46;
+            --accent: #b54d21;
+            --accent-dark: #7c2f12;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top right, rgba(181, 77, 33, 0.16), transparent 28%),
+                linear-gradient(135deg, #f8f3e9, var(--bg));
+            min-height: 100vh;
+        }
+
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            font-size: 2.2rem;
+        }
+
+        p {
+            color: var(--muted);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 18px;
+            margin-top: 24px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 18px;
+            padding: 18px;
+            box-shadow: 0 12px 30px rgba(53, 35, 13, 0.08);
+        }
+
+        label {
+            display: block;
+            margin: 10px 0 6px;
+            font-weight: 600;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cdbb9d;
+            border-radius: 10px;
+            background: #fff;
+            font: inherit;
+        }
+
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        button {
+            margin-top: 14px;
+            border: 0;
+            border-radius: 999px;
+            padding: 10px 16px;
+            font-weight: 700;
+            cursor: pointer;
+            background: var(--accent);
+            color: #fff;
+        }
+
+        button:hover {
+            background: var(--accent-dark);
+        }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #201811;
+            color: #f7e8d3;
+            border-radius: 14px;
+            padding: 16px;
+            min-height: 260px;
+            overflow: auto;
+        }
+
+        .links {
+            margin-top: 10px;
+        }
+
+        .links a {
+            color: var(--accent-dark);
+            font-weight: 700;
+            text-decoration: none;
+            margin-right: 14px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>AI Integration Test Console</h1>
+        <p>Use these quick actions to verify the Local AI endpoints and inspect the JSON responses.</p>
+        <div class="links">
+            <a href="/swagger" target="_blank" rel="noreferrer">Open Swagger</a>
+            <a href="/api/testai/health" target="_blank" rel="noreferrer">Open Health JSON</a>
+        </div>
+
+        <section class="grid">
+            <div class="card">
+                <h2>Health</h2>
+                <p>Checks whether the local model is reachable and reports response time.</p>
+                <button type="button" onclick="runHealth()">Test Health</button>
+            </div>
+
+            <div class="card">
+                <h2>Chat</h2>
+                <label for="chatMessage">Message</label>
+                <textarea id="chatMessage">Hello, can you help me find a good budget running shoe?</textarea>
+                <button type="button" onclick="runChat()">Test Chat</button>
+            </div>
+
+            <div class="card">
+                <h2>Parse</h2>
+                <label for="parseQuery">Natural language query</label>
+                <textarea id="parseQuery">I need a red shoe under R500</textarea>
+                <button type="button" onclick="runParse()">Test Parse</button>
+            </div>
+
+            <div class="card">
+                <h2>Recommend</h2>
+                <label for="budget">Budget</label>
+                <input id="budget" type="number" value="500" min="1">
+                <label for="colors">Colors (comma separated)</label>
+                <input id="colors" type="text" value="red">
+                <label for="styles">Styles (comma separated)</label>
+                <input id="styles" type="text" value="running">
+                <button type="button" onclick="runRecommend()">Test Recommend</button>
+            </div>
+        </section>
+
+        <section class="card" style="margin-top: 20px;">
+            <h2>Response</h2>
+            <pre id="output">Run a test to see the response here.</pre>
+        </section>
+    </main>
+
+    <script>
+        const output = document.getElementById("output");
+
+        function parseList(value) {
+            return value
+                .split(",")
+                .map(item => item.trim())
+                .filter(Boolean);
+        }
+
+        async function request(url, options) {
+            output.textContent = "Loading...";
+            try {
+                const response = await fetch(url, options);
+                const text = await response.text();
+                let body;
+
+                try {
+                    body = JSON.parse(text);
+                } catch {
+                    body = text;
+                }
+
+                output.textContent = JSON.stringify({
+                    status: response.status,
+                    ok: response.ok,
+                    body
+                }, null, 2);
+            } catch (error) {
+                output.textContent = JSON.stringify({
+                    error: error.message
+                }, null, 2);
+            }
+        }
+
+        function runHealth() {
+            request("/api/testai/health", { method: "GET" });
+        }
+
+        function runChat() {
+            request("/api/testai/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    message: document.getElementById("chatMessage").value
+                })
+            });
+        }
+
+        function runParse() {
+            request("/api/testai/parse", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    query: document.getElementById("parseQuery").value
+                })
+            });
+        }
+
+        function runRecommend() {
+            request("/api/testai/recommend", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    budget: Number(document.getElementById("budget").value),
+                    preferences: {
+                        colors: parseList(document.getElementById("colors").value),
+                        styles: parseList(document.getElementById("styles").value)
+                    }
+                })
+            });
+        }
+    </script>
+</body>
+</html>

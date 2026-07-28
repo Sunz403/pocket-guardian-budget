@@ -1,0 +1,317 @@
+@{
+    ViewData["Title"] = "Shopping Cart";
+}
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">Shopping Cart</h1>
+        <p class="text-muted mb-0">Review your selected items and confirm checkout when everything looks right.</p>
+    </div>
+    <a class="btn btn-outline-dark" href="/Shopping/Assistant">Continue Shopping</a>
+</div>
+
+<div id="cartAlert" class="alert d-none" role="alert"></div>
+
+<div class="row g-4">
+    <section class="col-xl-8">
+        <div class="border rounded-3 bg-white shadow-sm">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th class="text-end">Price</th>
+                            <th class="text-center">Quantity</th>
+                            <th class="text-end">Subtotal</th>
+                            <th class="text-end">Remove</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartItemsBody">
+                        <tr>
+                            <td colspan="5" class="p-4 text-muted">Loading cart items...</td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th colspan="3" class="text-end">Total</th>
+                            <th id="cartTableTotal" class="text-end">R0.00</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <aside class="col-xl-4">
+        <div class="border rounded-3 p-4 bg-white shadow-sm">
+            <h2 class="h5 mb-3">Summary</h2>
+            <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">Subtotal</span>
+                <strong id="summarySubtotal">R0.00</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">Shipping</span>
+                <strong id="summaryShipping">R0.00</strong>
+            </div>
+            <div class="d-flex justify-content-between border-top pt-3 mb-2">
+                <span class="fw-semibold">Total</span>
+                <strong id="summaryTotal" class="fs-5">R0.00</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-3">
+                <span class="text-muted">Remaining after purchase</span>
+                <strong id="summaryRemainingBudget">R0.00</strong>
+            </div>
+            <div id="budgetWarning" class="alert alert-warning d-none py-2" role="alert"></div>
+            <button id="checkoutButton" class="btn btn-success w-100" type="button" data-bs-toggle="modal" data-bs-target="#checkoutModal" disabled>
+                Checkout
+            </button>
+        </div>
+    </aside>
+</div>
+
+<div class="modal fade" id="checkoutModal" tabindex="-1" aria-labelledby="checkoutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="checkoutModalLabel">Confirm Checkout</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Items</span>
+                    <strong id="modalItemCount">0</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Total</span>
+                    <strong id="modalTotal">R0.00</strong>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted">Remaining budget</span>
+                    <strong id="modalRemaining">R0.00</strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button id="confirmCheckoutButton" type="button" class="btn btn-success">
+                    <span id="checkoutSpinner" class="spinner-border spinner-border-sm me-2 d-none" aria-hidden="true"></span>
+                    <span id="checkoutButtonText">Confirm Checkout</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            let cartState = null;
+            const alertBox = document.getElementById('cartAlert');
+            const body = document.getElementById('cartItemsBody');
+            const checkoutButton = document.getElementById('checkoutButton');
+            const confirmCheckoutButton = document.getElementById('confirmCheckoutButton');
+            const checkoutSpinner = document.getElementById('checkoutSpinner');
+            const checkoutButtonText = document.getElementById('checkoutButtonText');
+            const checkoutModal = new bootstrap.Modal(document.getElementById('checkoutModal'));
+
+            async function loadCart() {
+                const response = await fetch('/Cart/Data', {
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                });
+                const data = await readJson(response);
+
+                if (!response.ok) {
+                    throw new Error(data?.message || data?.title || 'Sign in to view your cart.');
+                }
+
+                renderCart(data);
+            }
+
+            body.addEventListener('click', async event => {
+                const quantityButton = event.target.closest('[data-quantity-action]');
+                const removeButton = event.target.closest('[data-remove-item]');
+
+                if (quantityButton) {
+                    const id = Number(quantityButton.dataset.itemId);
+                    const item = cartState.items.find(cartItem => cartItem.id === id);
+                    const nextQuantity = quantityButton.dataset.quantityAction === 'increase'
+                        ? item.quantity + 1
+                        : item.quantity - 1;
+
+                    if (nextQuantity < 1) {
+                        return;
+                    }
+
+                    await updateQuantity(id, nextQuantity);
+                }
+
+                if (removeButton) {
+                    await removeItem(Number(removeButton.dataset.itemId));
+                }
+            });
+
+            checkoutButton.addEventListener('click', () => {
+                document.getElementById('modalItemCount').textContent = cartState?.itemCount || 0;
+                document.getElementById('modalTotal').textContent = formatCurrency(cartState?.total);
+                document.getElementById('modalRemaining').textContent = formatCurrency(cartState?.remainingBudgetAfterPurchase);
+            });
+
+            confirmCheckoutButton.addEventListener('click', async () => {
+                setCheckoutLoading(true);
+
+                try {
+                    const response = await fetch('/Cart/Checkout', {
+                        method: 'POST',
+                        headers: {
+                            Accept: 'application/json'
+                        }
+                    });
+                    const data = await readJson(response);
+
+                    if (!response.ok) {
+                        throw new Error(data?.message || data?.title || 'Checkout failed.');
+                    }
+
+                    checkoutModal.hide();
+                    showMessage(data?.message || 'Checkout completed successfully.', 'success');
+                    await loadCart();
+                } catch (error) {
+                    showMessage(error.message, 'danger');
+                } finally {
+                    setCheckoutLoading(false);
+                }
+            });
+
+            async function updateQuantity(id, quantity) {
+                try {
+                    const response = await fetch(`/Cart/Update/${id}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json'
+                        },
+                        body: JSON.stringify({ quantity })
+                    });
+                    const data = await readJson(response);
+
+                    if (!response.ok) {
+                        throw new Error(data?.message || data?.title || 'Could not update item.');
+                    }
+
+                    renderCart(data);
+                } catch (error) {
+                    showMessage(error.message, 'danger');
+                }
+            }
+
+            async function removeItem(id) {
+                try {
+                    const response = await fetch(`/Cart/Remove/${id}`, {
+                        method: 'POST',
+                        headers: {
+                            Accept: 'application/json'
+                        }
+                    });
+                    const data = await readJson(response);
+
+                    if (!response.ok) {
+                        throw new Error(data?.message || data?.title || 'Could not remove item.');
+                    }
+
+                    renderCart(data);
+                    showMessage('Item removed from cart.', 'success');
+                } catch (error) {
+                    showMessage(error.message, 'danger');
+                }
+            }
+
+            function renderCart(data) {
+                cartState = data;
+                const items = data.items || [];
+
+                if (items.length === 0) {
+                    body.innerHTML = '<tr><td colspan="5" class="p-4 text-muted">Your cart is empty.</td></tr>';
+                } else {
+                    body.innerHTML = items.map(renderCartRow).join('');
+                }
+
+                document.getElementById('cartTableTotal').textContent = formatCurrency(data.total);
+                document.getElementById('summarySubtotal').textContent = formatCurrency(data.subtotal);
+                document.getElementById('summaryShipping').textContent = data.shipping > 0 ? formatCurrency(data.shipping) : 'Free';
+                document.getElementById('summaryTotal').textContent = formatCurrency(data.total);
+                document.getElementById('summaryRemainingBudget').textContent = formatCurrency(data.remainingBudgetAfterPurchase);
+
+                const warning = document.getElementById('budgetWarning');
+                warning.classList.toggle('d-none', !data.exceedsBudget);
+                warning.textContent = data.hasBudget
+                    ? 'This checkout exceeds your remaining monthly budget.'
+                    : 'Set a monthly budget before checking out.';
+
+                checkoutButton.disabled = items.length === 0 || data.exceedsBudget;
+            }
+
+            function renderCartRow(item) {
+                const imageUrl = item.imageUrl || 'https://placehold.co/96x96/e9ecef/495057?text=Item';
+                return `
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-3">
+                                <img src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(item.productName)}" class="rounded border object-fit-cover" width="64" height="64">
+                                <div>
+                                    <strong class="d-block">${escapeHtml(item.productName)}</strong>
+                                    <span class="text-muted small">Product #${Number(item.productId)}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">${formatCurrency(item.price)}</td>
+                        <td>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <button class="btn btn-outline-secondary btn-sm" type="button" data-quantity-action="decrease" data-item-id="${Number(item.id)}" aria-label="Decrease quantity">-</button>
+                                <span class="border rounded px-3 py-1">${Number(item.quantity)}</span>
+                                <button class="btn btn-outline-secondary btn-sm" type="button" data-quantity-action="increase" data-item-id="${Number(item.id)}" aria-label="Increase quantity">+</button>
+                            </div>
+                        </td>
+                        <td class="text-end">${formatCurrency(item.subtotal)}</td>
+                        <td class="text-end">
+                            <button class="btn btn-outline-danger btn-sm" type="button" data-remove-item data-item-id="${Number(item.id)}">Remove</button>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            function setCheckoutLoading(isLoading) {
+                confirmCheckoutButton.disabled = isLoading;
+                checkoutSpinner.classList.toggle('d-none', !isLoading);
+                checkoutButtonText.textContent = isLoading ? 'Processing...' : 'Confirm Checkout';
+            }
+
+            function showMessage(message, type) {
+                alertBox.textContent = message;
+                alertBox.className = `alert alert-${type}`;
+            }
+
+            async function readJson(response) {
+                const text = await response.text();
+                return text ? JSON.parse(text) : null;
+            }
+
+            function formatCurrency(value) {
+                return new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(Number(value || 0));
+            }
+
+            function escapeHtml(value) {
+                const div = document.createElement('div');
+                div.textContent = value || '';
+                return div.innerHTML;
+            }
+
+            function escapeAttribute(value) {
+                return escapeHtml(value).replace(/"/g, '&quot;');
+            }
+
+            loadCart().catch(error => showMessage(error.message, 'warning'));
+        })();
+    </script>
+}

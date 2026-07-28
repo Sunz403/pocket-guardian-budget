@@ -53,6 +53,42 @@ namespace AIShoppingAssistant.Migrations
                     b.ToTable("Budgets");
                 });
 
+            modelBuilder.Entity("AIShoppingAssistant.Models.CartItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AddedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("CartItems");
+                });
+
             modelBuilder.Entity("AIShoppingAssistant.Models.Product", b =>
                 {
                     b.Property<int>("Id")
@@ -388,6 +424,34 @@ namespace AIShoppingAssistant.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AIShoppingAssistant.Models.PurchaseHistory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Items")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("PurchaseDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PurchaseHistories");
+                });
+
             modelBuilder.Entity("AIShoppingAssistant.Models.SearchHistory", b =>
                 {
                     b.Property<int>("Id")
@@ -509,6 +573,28 @@ namespace AIShoppingAssistant.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AIShoppingAssistant.Models.CartItem", b =>
+                {
+                    b.HasOne("AIShoppingAssistant.Models.User", "User")
+                        .WithMany("CartItems")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AIShoppingAssistant.Models.PurchaseHistory", b =>
+                {
+                    b.HasOne("AIShoppingAssistant.Models.User", "User")
+                        .WithMany("PurchaseHistories")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("AIShoppingAssistant.Models.SearchHistory", b =>
                 {
                     b.HasOne("AIShoppingAssistant.Models.User", "User")
@@ -534,6 +620,10 @@ namespace AIShoppingAssistant.Migrations
             modelBuilder.Entity("AIShoppingAssistant.Models.User", b =>
                 {
                     b.Navigation("Budgets");
+
+                    b.Navigation("CartItems");
+
+                    b.Navigation("PurchaseHistories");
 
                     b.Navigation("SearchHistories");
 

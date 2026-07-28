@@ -1,0 +1,58 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# .NET generated files
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.nupkg
+*.snupkg
+project.lock.json
+project.assets.json
+*.nuget.g.props
+*.nuget.g.targets
+*.EntityFrameworkCore.targets
+
+# Publish and test artifacts
+[Aa]rtifacts/
+[Tt]est[Rr]esult*/
+[Tt]est[Rr]esults/
+[Ll]og[s]/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+
+# User and local configuration
+.vs/
+.vscode/
+.idea/
+*.DotSettings.user
+appsettings.Local.json
+appsettings.*.local.json
+.env
+.env.*
+!.env.example
+secrets.json
+
+# ASP.NET Core development certificate files
+*.pfx
+*.p12
+
+# Package manager caches
+node_modules/
+packages/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

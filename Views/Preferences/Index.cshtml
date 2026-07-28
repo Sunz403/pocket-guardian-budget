@@ -1,0 +1,239 @@
+@model AIShoppingAssistant.ViewModels.PreferencesIndexViewModel
+
+@{
+    ViewData["Title"] = "Shopping Preferences";
+
+    var colorOptions = new[] { "Red", "Blue", "Green", "Black", "White", "Grey", "Navy", "Brown", "Pink", "Purple", "Yellow", "Orange" };
+    var styleOptions = new[] { "Casual", "Formal", "Sporty", "Streetwear", "Classic", "Minimalist", "Trendy", "Business", "Outdoor", "Luxury" };
+    var storeOptions = new[] { "Woolworths", "Checkers", "Pick n Pay", "Shoprite", "Mr Price", "Takealot", "Superbalist", "Clicks", "Dis-Chem", "Makro" };
+}
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">Shopping Preferences</h1>
+        <p class="text-muted mb-0">Tune recommendations around the colors, styles, stores, and budget range you care about.</p>
+    </div>
+</div>
+
+<div id="preferencesAlert" class="alert d-none" role="alert"></div>
+
+@if (TempData["SuccessMessage"] is string successMessage)
+{
+    <div class="alert alert-success" role="alert">@successMessage</div>
+}
+
+@if (TempData["ErrorMessage"] is string errorMessage)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <form id="preferencesForm" asp-action="UpdateForm" asp-controller="Preferences" method="post" class="needs-validation" novalidate>
+            @Html.AntiForgeryToken()
+
+            <section class="border rounded-3 p-4 mb-4 bg-white shadow-sm">
+                <h2 class="h5 mb-3">Favorite Colors</h2>
+                <div class="row g-2">
+                    @foreach (var color in colorOptions)
+                    {
+                        var colorId = $"color-{color.ToLowerInvariant().Replace(" ", "-")}";
+                        <div class="col-6 col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input preference-color" type="checkbox" name="FavoriteColors" value="@color" id="@colorId" checked="@Model.Preferences.FavoriteColors.Contains(color, StringComparer.OrdinalIgnoreCase)" />
+                                <label class="form-check-label" for="@colorId">@color</label>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section class="border rounded-3 p-4 mb-4 bg-white shadow-sm">
+                <h2 class="h5 mb-3">Favorite Styles</h2>
+                <select id="favoriteStyles" name="FavoriteStyles" class="form-select" multiple size="6" required>
+                    @foreach (var style in styleOptions)
+                    {
+                        <option value="@style" selected="@Model.Preferences.FavoriteStyles.Contains(style, StringComparer.OrdinalIgnoreCase)">@style</option>
+                    }
+                </select>
+                <div class="invalid-feedback">Select at least one style.</div>
+                <div class="form-text">Hold Ctrl or Cmd to select multiple styles.</div>
+            </section>
+
+            <section class="border rounded-3 p-4 mb-4 bg-white shadow-sm">
+                <h2 class="h5 mb-3">Favorite Stores</h2>
+                <select id="favoriteStores" name="FavoriteStores" class="form-select" multiple size="7">
+                    @foreach (var store in storeOptions)
+                    {
+                        <option value="@store" selected="@Model.Preferences.FavoriteStores.Contains(store, StringComparer.OrdinalIgnoreCase)">@store</option>
+                    }
+                </select>
+                <div class="form-text">Choose the retailers you want recommendations to favor.</div>
+            </section>
+
+            <section class="border rounded-3 p-4 mb-4 bg-white shadow-sm">
+                <h2 class="h5 mb-3">Preferred Price Range</h2>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="priceMin">Minimum</label>
+                        <div class="input-group">
+                            <span class="input-group-text">R</span>
+                            <input id="priceMin" name="PreferredPriceRangeMin" class="form-control" type="number" min="0" step="0.01" value="@Model.Preferences.PreferredPriceRangeMin" required />
+                            <div class="invalid-feedback">Enter a valid minimum price.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="priceMax">Maximum</label>
+                        <div class="input-group">
+                            <span class="input-group-text">R</span>
+                            <input id="priceMax" name="PreferredPriceRangeMax" class="form-control" type="number" min="0" step="0.01" value="@Model.Preferences.PreferredPriceRangeMax" required />
+                            <div class="invalid-feedback">Enter a valid maximum price.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <button id="savePreferencesButton" type="submit" class="btn btn-primary px-4">Save Preferences</button>
+        </form>
+    </div>
+
+    <aside class="col-lg-4">
+        <section class="border rounded-3 p-4 mb-4 bg-white shadow-sm">
+            <h2 class="h5 mb-3">Recent Search History</h2>
+            @if (Model.RecentSearchHistory.Count == 0)
+            {
+                <p class="text-muted mb-0">No recent searches yet.</p>
+            }
+            else
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var search in Model.RecentSearchHistory)
+                    {
+                        <div class="list-group-item px-0">
+                            <div class="fw-semibold">@search.SearchTerm</div>
+                            <div class="small text-muted">
+                                @search.SearchDate.ToLocalTime().ToString("MMM d, yyyy HH:mm")
+                                @if (!string.IsNullOrWhiteSpace(search.Location))
+                                {
+                                    <span> · @search.Location</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="border rounded-3 p-4 bg-white shadow-sm">
+            <h2 class="h5 mb-3">Smart Suggestions</h2>
+            <div id="smartSuggestions">
+                @foreach (var suggestion in Model.SmartSuggestions)
+                {
+                    <div class="alert alert-info py-2 mb-2">@suggestion</div>
+                }
+            </div>
+        </section>
+    </aside>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.getElementById('preferencesForm');
+            const alertBox = document.getElementById('preferencesAlert');
+            const saveButton = document.getElementById('savePreferencesButton');
+
+            const showMessage = (message, type) => {
+                alertBox.textContent = message;
+                alertBox.className = `alert alert-${type}`;
+            };
+
+            const getSelectedValues = selector =>
+                Array.from(document.querySelectorAll(selector))
+                    .filter(element => element.selected || element.checked)
+                    .map(element => element.value);
+
+            const setSelectedValues = (selector, values) => {
+                const normalized = (values || []).map(value => value.toLowerCase());
+                document.querySelectorAll(selector).forEach(element => {
+                    element.selected = normalized.includes(element.value.toLowerCase());
+                    element.checked = normalized.includes(element.value.toLowerCase());
+                });
+            };
+
+            const buildPayload = () => ({
+                favoriteColors: getSelectedValues('.preference-color'),
+                favoriteStyles: getSelectedValues('#favoriteStyles option'),
+                favoriteStores: getSelectedValues('#favoriteStores option'),
+                preferredPriceRangeMin: Number(document.getElementById('priceMin').value),
+                preferredPriceRangeMax: Number(document.getElementById('priceMax').value)
+            });
+
+            const loadPreferences = async () => {
+                try {
+                    const response = await fetch('/api/preferences', {
+                        headers: {
+                            Accept: 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        return;
+                    }
+
+                    const preferences = await response.json();
+                    setSelectedValues('.preference-color', preferences.favoriteColors);
+                    setSelectedValues('#favoriteStyles option', preferences.favoriteStyles);
+                    setSelectedValues('#favoriteStores option', preferences.favoriteStores);
+                    document.getElementById('priceMin').value = preferences.preferredPriceRangeMin ?? 0;
+                    document.getElementById('priceMax').value = preferences.preferredPriceRangeMax ?? 0;
+                } catch {
+                    showMessage('Current preferences could not be refreshed. The form still shows the latest server-rendered values.', 'warning');
+                }
+            };
+
+            form.addEventListener('submit', async event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const minPrice = Number(document.getElementById('priceMin').value);
+                const maxPrice = Number(document.getElementById('priceMax').value);
+
+                if (!form.checkValidity() || minPrice > maxPrice) {
+                    form.classList.add('was-validated');
+                    showMessage('Please check the form. Maximum price must be greater than or equal to minimum price.', 'danger');
+                    return;
+                }
+
+                saveButton.disabled = true;
+                saveButton.textContent = 'Saving...';
+
+                try {
+                    const response = await fetch('/api/preferences/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json'
+                        },
+                        body: JSON.stringify(buildPayload())
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json().catch(() => ({}));
+                        throw new Error(error.message || 'Could not save preferences.');
+                    }
+
+                    showMessage('Preferences saved successfully.', 'success');
+                    form.classList.remove('was-validated');
+                } catch (error) {
+                    showMessage(error.message || 'Could not save preferences.', 'danger');
+                } finally {
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Save Preferences';
+                }
+            });
+
+            loadPreferences();
+        })();
+    </script>
+}

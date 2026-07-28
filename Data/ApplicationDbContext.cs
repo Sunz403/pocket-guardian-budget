@@ -24,6 +24,10 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Budget> Budgets { get; set; }
 
+    public DbSet<CartItem> CartItems { get; set; }
+
+    public DbSet<PurchaseHistory> PurchaseHistories { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -86,6 +90,27 @@ public class ApplicationDbContext : DbContext
 
             entity.HasIndex(budget => new { budget.UserId, budget.Month, budget.Year })
                 .IsUnique();
+        });
+
+        modelBuilder.Entity<CartItem>(entity =>
+        {
+            entity.HasOne(cartItem => cartItem.User)
+                .WithMany(user => user.CartItems)
+                .HasForeignKey(cartItem => cartItem.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(cartItem => new { cartItem.UserId, cartItem.ProductId })
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<PurchaseHistory>(entity =>
+        {
+            entity.HasOne(purchase => purchase.User)
+                .WithMany(user => user.PurchaseHistories)
+                .HasForeignKey(purchase => purchase.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(purchase => purchase.Items).HasColumnType("nvarchar(max)");
         });
 
         modelBuilder.Entity<Product>().HasData(

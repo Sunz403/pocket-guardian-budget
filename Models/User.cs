@@ -29,4 +29,8 @@ public class User
     public ICollection<SearchHistory> SearchHistories { get; set; } = new List<SearchHistory>();
 
     public ICollection<Budget> Budgets { get; set; } = new List<Budget>();
+
+    public ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
+
+    public ICollection<PurchaseHistory> PurchaseHistories { get; set; } = new List<PurchaseHistory>();
 }
