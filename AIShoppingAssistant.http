@@ -1,0 +1,6 @@
+@AIShoppingAssistant_HostAddress = http://localhost:5252
+
+GET {{AIShoppingAssistant_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
