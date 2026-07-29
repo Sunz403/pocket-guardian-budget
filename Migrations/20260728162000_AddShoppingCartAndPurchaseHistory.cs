@@ -1,10 +1,13 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace AIShoppingAssistant.Migrations;
 
+[DbContext(typeof(Data.ApplicationDbContext))]
+[Migration("20260728162000_AddShoppingCartAndPurchaseHistory")]
 public partial class AddShoppingCartAndPurchaseHistory : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

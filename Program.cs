@@ -151,6 +151,8 @@ static void SeedDatabase(ApplicationDbContext context)
         user.Email == "nomsa.maseko@example.co.za" ||
         user.Email == "andile.khumalo@example.co.za"))
     {
+        EnsureCurrentMonthBudgets(context);
+        EnsureShoppingAssistantTestProducts(context);
         return;
     }
 
@@ -215,6 +217,68 @@ static void SeedDatabase(ApplicationDbContext context)
         BuildPurchase(users[2].Id, products[1], 1, monthStart.AddDays(8)),
         BuildPurchase(users[3].Id, products[3], 1, monthStart.AddDays(10)),
         BuildPurchase(users[4].Id, products[4], 2, monthStart.AddDays(12)));
+
+    context.SaveChanges();
+    EnsureShoppingAssistantTestProducts(context);
+}
+
+static void EnsureShoppingAssistantTestProducts(ApplicationDbContext context)
+{
+    var now = DateTime.UtcNow;
+    var products = new[]
+    {
+        new Product { Name = "Velocity Red Running Shoe", Description = "Lightweight red running shoe for daily training.", Price = 449.99m, ShippingCost = 0m, StoreName = "SportScene", Category = "Shoes", Color = "Red", Size = "8", CreatedAt = now },
+        new Product { Name = "Budget Android Smartphone", Description = "Affordable smartphone with mobile apps, camera, and long battery life.", Price = 1899.00m, ShippingCost = 59.00m, StoreName = "Takealot", Category = "Electronics", Color = "Black", Size = "One Size", CreatedAt = now },
+        new Product { Name = "Essentials Grocery Basket", Description = "Groceries with rice, pasta, tinned food, tea, and pantry basics.", Price = 289.99m, ShippingCost = 35.00m, StoreName = "Checkers", Category = "Groceries", Size = "Basket", CreatedAt = now },
+        new Product { Name = "Formal Navy Jacket", Description = "Smart formal jacket suitable for work, events, and interviews.", Price = 749.00m, ShippingCost = 60.00m, StoreName = "Woolworths", Category = "Outerwear", Color = "Navy", Size = "M", CreatedAt = now }
+    };
+
+    foreach (var product in products)
+    {
+        if (!context.Products.Any(existing => existing.Name == product.Name))
+        {
+            context.Products.Add(product);
+        }
+    }
+
+    context.SaveChanges();
+}
+
+static void EnsureCurrentMonthBudgets(ApplicationDbContext context)
+{
+    var now = DateTime.UtcNow;
+    var monthlyBudgetsByEmail = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["thabo.mokoena@example.co.za"] = 4500m,
+        ["lerato.dlamini@example.co.za"] = 3800m,
+        ["sipho.nkosi@example.co.za"] = 6500m,
+        ["nomsa.maseko@example.co.za"] = 3200m,
+        ["andile.khumalo@example.co.za"] = 5000m
+    };
+
+    var users = context.Users
+        .Where(user => monthlyBudgetsByEmail.Keys.Contains(user.Email))
+        .ToList();
+
+    foreach (var user in users)
+    {
+        var hasBudget = context.Budgets.Any(budget =>
+            budget.UserId == user.Id &&
+            budget.Month == now.Month &&
+            budget.Year == now.Year);
+
+        if (!hasBudget)
+        {
+            context.Budgets.Add(new Budget
+            {
+                UserId = user.Id,
+                Month = now.Month,
+                Year = now.Year,
+                MonthlyAmount = monthlyBudgetsByEmail[user.Email],
+                CurrentSpending = 0m
+            });
+        }
+    }
 
     context.SaveChanges();
 }

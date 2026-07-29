@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace AIShoppingAssistant.Migrations;
 
+[DbContext(typeof(Data.ApplicationDbContext))]
+[Migration("20260728170000_AddBudgetAlertToUserPreferences")]
 public partial class AddBudgetAlertToUserPreferences : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

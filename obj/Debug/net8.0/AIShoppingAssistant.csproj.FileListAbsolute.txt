@@ -1,7 +1,6 @@
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\appsettings.Development.json
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\appsettings.json
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\AIShoppingAssistant.staticwebassets.endpoints.json
-C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\AIShoppingAssistant.exe
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\AIShoppingAssistant.deps.json
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\AIShoppingAssistant.runtimeconfig.json
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\AIShoppingAssistant.dll
@@ -1374,3 +1373,4 @@ C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\artifacts\seed-build\runti
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\artifacts\seed-build\runtimes\win\lib\net6.0\System.Security.Cryptography.ProtectedData.dll
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\artifacts\seed-build\runtimes\browser\lib\net8.0\System.Text.Encodings.Web.dll
 C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\artifacts\seed-build\runtimes\win\lib\net6.0\System.Windows.Extensions.dll
+C:\Users\Sunz\Desktop\AI Shopping\AIShoppingAssistant\bin\Debug\net8.0\AIShoppingAssistant.exe

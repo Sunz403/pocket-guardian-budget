@@ -91,10 +91,17 @@ public sealed class LocalAIService : IAIService
         var prompt = $$"""
             Extract shopping filters from this query: {{query}}
             Return JSON only with exactly: {"keyword":string|null,"maxPrice":number|null,"color":string|null,"category":string|null,"size":string|null}.
-            maxPrice must be a number without currency. Infer nothing; use null when absent. "R" means South African rand.
+            maxPrice must be a number without currency. "R" means South African rand.
+            Infer obvious product words and categories from the query. Examples:
+            - "red running shoe under R500" => {"keyword":"running shoe","maxPrice":500,"color":"red","category":"Shoes","size":null}
+            - "cheap smartphone around R2000" => {"keyword":"smartphone","maxPrice":2000,"color":null,"category":"Electronics","size":null}
+            - "groceries for R300" => {"keyword":"groceries","maxPrice":300,"color":null,"category":"Groceries","size":null}
+            - "formal jacket under R800" => {"keyword":"formal jacket","maxPrice":800,"color":null,"category":"Outerwear","size":null}
+            Use real JSON null, never the string "null".
             """;
 
-        return await ChatJsonAsync<ParsedQuery>(prompt, cancellationToken);
+        var parsed = await ChatJsonAsync<ParsedQuery>(prompt, cancellationToken);
+        return ShoppingQueryNormalizer.Normalize(query, parsed);
     }
 
     public async Task<string> GetChatResponseAsync(
