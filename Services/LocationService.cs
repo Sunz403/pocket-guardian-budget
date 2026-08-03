@@ -1,35 +1,41 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AIShoppingAssistant.DTOs;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace AIShoppingAssistant.Services;
 
 public sealed class LocationService
 {
-    private const double EarthRadiusKm = 6371.0088;
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromDays(7);
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly OpenCageOptions _openCageOptions;
     private readonly StoreLocationsOptions _storeLocations;
     private readonly ILogger<LocationService> _logger;
+    private readonly IMemoryCache _cache;
 
     public LocationService(
         IHttpClientFactory httpClientFactory,
         IOptions<OpenCageOptions> openCageOptions,
         IOptions<StoreLocationsOptions> storeLocations,
-        ILogger<LocationService> logger)
+        ILogger<LocationService> logger,
+        IMemoryCache cache)
     {
         _httpClientFactory = httpClientFactory;
         _openCageOptions = openCageOptions.Value;
         _storeLocations = storeLocations.Value;
         _logger = logger;
+        _cache = cache;
     }
 
-    public async Task<GeoCoordinates?> ValidatePostalCodeAsync(
-        string postalCode,
+    public async Task<GeoCoordinates?> GeocodeAsync(
+        string location,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(postalCode);
+        if (!IsValidLocation(location)) return null;
+        var normalized = location.Trim().ToUpperInvariant();
+        if (_cache.TryGetValue<GeoCoordinates>(CacheKey(normalized), out var cached)) return cached;
         if (string.IsNullOrWhiteSpace(_openCageOptions.ApiKey))
         {
             _logger.LogError("OpenCage API key is not configured.");
@@ -37,7 +43,7 @@ public sealed class LocationService
         }
 
         var client = _httpClientFactory.CreateClient("OpenCage");
-        var requestUri = $"geocode/v1/json?q={Uri.EscapeDataString(postalCode)}&key={Uri.EscapeDataString(_openCageOptions.ApiKey)}&limit=1&no_annotations=1";
+        var requestUri = $"geocode/v1/json?q={Uri.EscapeDataString(location)}&key={Uri.EscapeDataString(_openCageOptions.ApiKey)}&limit=1&no_annotations=1";
         try
         {
             using var response = await client.GetAsync(requestUri, cancellationToken);
@@ -50,27 +56,32 @@ public sealed class LocationService
             await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
             var result = await JsonSerializer.DeserializeAsync<OpenCageResponse>(responseStream, cancellationToken: cancellationToken);
             var geometry = result?.Results?.FirstOrDefault()?.Geometry;
-            return geometry is null ? null : new GeoCoordinates
-            {
-                Latitude = geometry.Latitude,
-                Longitude = geometry.Longitude
-            };
+            if (geometry is null || geometry.Latitude is < -90 or > 90 || geometry.Longitude is < -180 or > 180) return null;
+            var coordinates = new GeoCoordinates { Latitude = geometry.Latitude, Longitude = geometry.Longitude };
+            _cache.Set(CacheKey(normalized), coordinates, CacheLifetime);
+            return coordinates;
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "OpenCage could not validate postal code {PostalCode}.", postalCode);
+            _logger.LogError(ex, "OpenCage could not geocode location {Location}.", location);
             return null;
         }
     }
+
+    public Task<GeoCoordinates?> ValidatePostalCodeAsync(string postalCode, CancellationToken cancellationToken = default) =>
+        GeocodeAsync(postalCode, cancellationToken);
+
+    public static bool IsValidLocation(string? location) =>
+        !string.IsNullOrWhiteSpace(location) && location.Trim().Length is >= 3 and <= 200;
 
     public async Task<double?> CalculateDistanceAsync(
         string firstPostalCode,
         string secondPostalCode,
         CancellationToken cancellationToken = default)
     {
-        var first = await ValidatePostalCodeAsync(firstPostalCode, cancellationToken);
-        var second = await ValidatePostalCodeAsync(secondPostalCode, cancellationToken);
-        return first is null || second is null ? null : CalculateDistanceInKilometers(first, second);
+        var first = await GeocodeAsync(firstPostalCode, cancellationToken);
+        var second = await GeocodeAsync(secondPostalCode, cancellationToken);
+        return first is null || second is null ? null : StoreService.CalculateDistanceInKilometers(first, second);
     }
 
     public async Task<List<string>> GetNearbyStoresAsync(
@@ -79,13 +90,13 @@ public sealed class LocationService
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(radiusInKilometers);
-        var origin = await ValidatePostalCodeAsync(postalCode, cancellationToken);
+        var origin = await GeocodeAsync(postalCode, cancellationToken);
         if (origin is null)
             return new List<string>();
 
         return _storeLocations.Stores
             .Where(store => !string.IsNullOrWhiteSpace(store.Name))
-            .Where(store => CalculateDistanceInKilometers(origin, new GeoCoordinates
+            .Where(store => StoreService.CalculateDistanceInKilometers(origin, new GeoCoordinates
             {
                 Latitude = store.Latitude,
                 Longitude = store.Longitude
@@ -95,17 +106,7 @@ public sealed class LocationService
             .ToList();
     }
 
-    private static double CalculateDistanceInKilometers(GeoCoordinates first, GeoCoordinates second)
-    {
-        var latitudeDelta = ToRadians(second.Latitude - first.Latitude);
-        var longitudeDelta = ToRadians(second.Longitude - first.Longitude);
-        var a = Math.Pow(Math.Sin(latitudeDelta / 2), 2)
-            + Math.Cos(ToRadians(first.Latitude)) * Math.Cos(ToRadians(second.Latitude))
-            * Math.Pow(Math.Sin(longitudeDelta / 2), 2);
-        return EarthRadiusKm * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-    }
-
-    private static double ToRadians(double degrees) => degrees * Math.PI / 180d;
+    private static string CacheKey(string location) => $"opencage-geocode:{location}";
 
     private sealed class OpenCageResponse
     {

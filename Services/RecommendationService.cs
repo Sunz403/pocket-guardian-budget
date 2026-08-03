@@ -3,6 +3,7 @@ using AIShoppingAssistant.DTOs;
 using AIShoppingAssistant.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using System.Text.Json;
 
 namespace AIShoppingAssistant.Services;
 
@@ -12,17 +13,20 @@ public sealed class RecommendationService
     private readonly ApplicationDbContext _context;
     private readonly IMemoryCache _cache;
     private readonly ILogger<RecommendationService> _logger;
+    private readonly FileUploadService _fileUploadService;
 
     public RecommendationService(
         IAIService aiService,
         ApplicationDbContext context,
         IMemoryCache cache,
-        ILogger<RecommendationService> logger)
+        ILogger<RecommendationService> logger,
+        FileUploadService fileUploadService)
     {
         _aiService = aiService;
         _context = context;
         _cache = cache;
         _logger = logger;
+        _fileUploadService = fileUploadService;
     }
 
     public async Task<List<RecommendedProductDto>> GetPersonalizedRecommendationsAsync(
@@ -97,6 +101,101 @@ public sealed class RecommendationService
         };
     }
 
+    public async Task<InfiniteRecommendationResponseDto> GetInfiniteRecommendationsAsync(
+        int userId, int page, int pageSize, string? category, decimal? minPrice, decimal? maxPrice,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = $"infinite-recommendations:user:{userId}";
+        var ranked = await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
+            return await BuildInfiniteRecommendationsAsync(userId, cancellationToken);
+        }) ?? [];
+
+        var filtered = ranked.Where(item =>
+            (string.IsNullOrWhiteSpace(category) || item.Product.Category.Equals(category.Trim(), StringComparison.OrdinalIgnoreCase)) &&
+            (!minPrice.HasValue || item.Product.Price >= minPrice.Value) &&
+            (!maxPrice.HasValue || item.Product.Price <= maxPrice.Value)).ToList();
+        var products = filtered.Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(item => new InfiniteRecommendedProductDto
+            {
+                Id = item.Product.Id, Name = item.Product.Name, Description = item.Product.Description,
+                Price = item.Product.Price, Color = item.Product.Color, Size = item.Product.Size,
+                StoreName = item.Product.StoreName, Category = item.Product.Category,
+                ImageFileName = item.Product.ImageFileName,
+                ImageUrl = _fileUploadService.GetImageUrl(item.Product.ImageFileName),
+                Reason = item.Reason, ReasonType = item.ReasonType, AddedToShoppingList = item.AddedToShoppingList
+            }).ToList();
+
+        return new InfiniteRecommendationResponseDto
+        {
+            Products = products, TotalCount = filtered.Count, Page = page,
+            HasMore = page * pageSize < filtered.Count
+        };
+    }
+
+    private async Task<List<RankedRecommendation>> BuildInfiniteRecommendationsAsync(int userId, CancellationToken cancellationToken)
+    {
+        var products = await _context.Products.AsNoTracking().ToListAsync(cancellationToken);
+        var preferences = await _context.UserPreferences.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken) ?? new UserPreference();
+        var selectedItems = await _context.ShoppingListItems.AsNoTracking().Where(item => item.UserId == userId).ToListAsync(cancellationToken);
+        var searches = await _context.SearchHistories.AsNoTracking().Where(item => item.UserId == userId).ToListAsync(cancellationToken);
+        var purchases = await _context.PurchaseHistories.AsNoTracking().Where(item => item.UserId == userId).ToListAsync(cancellationToken);
+        var allSelectedItems = await _context.ShoppingListItems.AsNoTracking().ToListAsync(cancellationToken);
+        var allPurchases = await _context.PurchaseHistories.AsNoTracking().ToListAsync(cancellationToken);
+
+        var purchasedIds = ExtractProductIds(purchases);
+        var userProductIds = purchasedIds.Concat(selectedItems.Select(item => item.ProductId)).ToHashSet();
+        var userProducts = products.Where(item => userProductIds.Contains(item.Id)).ToList();
+        var storeCounts = userProducts.GroupBy(item => item.StoreName).ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        var categoryCounts = userProducts.GroupBy(item => item.Category).ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        var popularCounts = allSelectedItems.GroupBy(item => item.ProductId).ToDictionary(group => group.Key, group => group.Count());
+        foreach (var productId in ExtractProductIds(allPurchases)) popularCounts[productId] = popularCounts.GetValueOrDefault(productId) + 1;
+        var searchTerms = searches.Select(item => item.SearchTerm).Where(term => !string.IsNullOrWhiteSpace(term)).ToList();
+
+        return products.Select(product =>
+        {
+            var score = 0;
+            var reason = "Popular with shoppers";
+            var reasonType = "popular";
+            if (storeCounts.TryGetValue(product.StoreName, out var storeCount) && storeCount > 0)
+            {
+                score += 500 + storeCount * 10; reason = $"You often shop at {product.StoreName}"; reasonType = "purchase_history";
+            }
+            else if (categoryCounts.TryGetValue(product.Category, out var categoryCount) && categoryCount > 0)
+            {
+                score += 400 + categoryCount * 10; reason = $"Based on your {product.Category} purchases"; reasonType = "purchase_history";
+            }
+            else if (MatchesPreferences(product, preferences, searchTerms))
+            {
+                score += 300; reason = "Matches your saved preferences"; reasonType = "preferences";
+            }
+            else if (preferences.PreferredPriceRangeMax > 0 && product.Price >= preferences.PreferredPriceRangeMin && product.Price <= preferences.PreferredPriceRangeMax)
+            {
+                score += 200; reason = "Within your preferred price range"; reasonType = "price_range";
+            }
+            score += popularCounts.GetValueOrDefault(product.Id);
+            return new RankedRecommendation(product, score, reason, reasonType, selectedItems.Any(item => item.ProductId == product.Id));
+        }).OrderByDescending(item => item.Score).ThenBy(item => item.Product.Name).ToList();
+    }
+
+    private static bool MatchesPreferences(Product product, UserPreference preferences, IEnumerable<string> searches)
+    {
+        var text = $"{product.Name} {product.Description} {product.Category} {product.Color}";
+        return preferences.FavoriteStores.Any(value => product.StoreName.Equals(value, StringComparison.OrdinalIgnoreCase)) ||
+               preferences.FavoriteColors.Any(value => string.Equals(product.Color, value, StringComparison.OrdinalIgnoreCase)) ||
+               preferences.FavoriteStyles.Concat(searches).Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IEnumerable<int> ExtractProductIds(IEnumerable<PurchaseHistory> purchases) => purchases.SelectMany(purchase =>
+    {
+        try { return JsonSerializer.Deserialize<List<PurchaseItemSnapshotDto>>(purchase.Items)?.Select(item => item.ProductId) ?? []; }
+        catch (JsonException) { return []; }
+    });
+
+    private sealed record RankedRecommendation(Product Product, int Score, string Reason, string ReasonType, bool AddedToShoppingList);
+
     private async Task<Budget?> GetCurrentBudgetAsync(int userId, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
@@ -111,7 +210,7 @@ public sealed class RecommendationService
         FavoriteStyles = searches.Select(search => search.SearchTerm).Take(4).ToList()
     };
 
-    private static RecommendedProductDto Map(Product product, ProductRecommendation recommendation) => new()
+    private RecommendedProductDto Map(Product product, ProductRecommendation recommendation) => new()
     {
         Id = product.Id,
         Name = product.Name,
@@ -121,7 +220,7 @@ public sealed class RecommendationService
         Category = product.Category,
         Color = product.Color,
         Size = product.Size,
-        ImageUrl = product.ImageUrl,
+        ImageUrl = _fileUploadService.GetImageUrl(product.ImageFileName),
         AiExplanation = recommendation.Reason,
         AiScore = recommendation.Score
     };

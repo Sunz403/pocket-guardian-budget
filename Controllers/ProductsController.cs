@@ -1,6 +1,7 @@
 using AIShoppingAssistant.Data;
 using AIShoppingAssistant.DTOs;
 using AIShoppingAssistant.Models;
+using AIShoppingAssistant.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,11 +13,13 @@ public class ProductsController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<ProductsController> _logger;
+    private readonly FileUploadService _fileUploadService;
 
-    public ProductsController(ApplicationDbContext context, ILogger<ProductsController> logger)
+    public ProductsController(ApplicationDbContext context, ILogger<ProductsController> logger, FileUploadService fileUploadService)
     {
         _context = context;
         _logger = logger;
+        _fileUploadService = fileUploadService;
     }
 
     [HttpGet("search")]
@@ -26,6 +29,7 @@ public class ProductsController : ControllerBase
         [FromQuery] decimal? maxPrice,
         [FromQuery] string? color,
         [FromQuery] string? size,
+        [FromQuery] string? category,
         [FromQuery] string? storeName,
         [FromQuery] string? sortBy)
     {
@@ -75,17 +79,25 @@ public class ProductsController : ControllerBase
                 productsQuery = productsQuery.Where(product => product.StoreName == storeNameValue);
             }
 
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                var categoryValue = category.Trim();
+                productsQuery = productsQuery.Where(product => product.Category == categoryValue);
+            }
+
             productsQuery = sortBy switch
             {
                 "priceLowToHigh" => productsQuery.OrderBy(product => product.Price),
                 "priceHighToLow" => productsQuery.OrderByDescending(product => product.Price),
+                "nameDesc" => productsQuery.OrderByDescending(product => product.Name),
+                "nameAsc" => productsQuery.OrderBy(product => product.Name),
                 null or "" => productsQuery.OrderBy(product => product.Name),
                 _ => productsQuery.OrderBy(product => product.Name)
             };
 
-            var products = await productsQuery
-                .Select(product => MapProductResponse(product))
-                .ToListAsync();
+            var products = (await productsQuery.ToListAsync())
+                .Select(MapProductResponse)
+                .ToList();
 
             return Ok(products);
         }
@@ -104,7 +116,6 @@ public class ProductsController : ControllerBase
             var product = await _context.Products
                 .AsNoTracking()
                 .Where(existingProduct => existingProduct.Id == id)
-                .Select(existingProduct => MapProductResponse(existingProduct))
                 .SingleOrDefaultAsync();
 
             if (product is null)
@@ -112,7 +123,7 @@ public class ProductsController : ControllerBase
                 return NotFound(new { message = "Product not found." });
             }
 
-            return Ok(product);
+            return Ok(MapProductResponse(product));
         }
         catch (Exception ex)
         {
@@ -121,7 +132,7 @@ public class ProductsController : ControllerBase
         }
     }
 
-    private static ProductResponseDto MapProductResponse(Product product)
+    private ProductResponseDto MapProductResponse(Product product)
     {
         return new ProductResponseDto
         {
@@ -134,7 +145,7 @@ public class ProductsController : ControllerBase
             ShippingCost = product.ShippingCost,
             StoreName = product.StoreName,
             Category = product.Category,
-            ImageUrl = product.ImageUrl,
+            ImageUrl = _fileUploadService.GetImageUrl(product.ImageFileName),
             CreatedAt = product.CreatedAt
         };
     }

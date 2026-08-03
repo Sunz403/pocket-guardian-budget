@@ -37,9 +37,8 @@ public class Product
     [StringLength(100)]
     public string Category { get; set; } = string.Empty;
 
-    [Url]
-    [StringLength(500)]
-    public string? ImageUrl { get; set; }
+    [StringLength(255)]
+    public string? ImageFileName { get; set; }
 
     [Required]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

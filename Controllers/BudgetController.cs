@@ -251,11 +251,11 @@ public class BudgetController : Controller
         }).ToList();
     }
 
-    private static IReadOnlyList<CartItemDto> DeserializeItems(string json)
+    private static IReadOnlyList<PurchaseItemSnapshotDto> DeserializeItems(string json)
     {
         try
         {
-            return JsonSerializer.Deserialize<List<CartItemDto>>(json, new JsonSerializerOptions
+            return JsonSerializer.Deserialize<List<PurchaseItemSnapshotDto>>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             }) ?? [];

@@ -53,7 +53,7 @@ namespace AIShoppingAssistant.Migrations
                     b.ToTable("Budgets");
                 });
 
-            modelBuilder.Entity("AIShoppingAssistant.Models.CartItem", b =>
+            modelBuilder.Entity("AIShoppingAssistant.Models.ChatMessage", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -61,32 +61,56 @@ namespace AIShoppingAssistant.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime>("AddedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("ProductId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ProductName")
+                    b.Property<string>("ChatSessionId")
                         .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
-                    b.Property<int>("Quantity")
-                        .HasColumnType("int");
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("Sender")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "ProductId")
-                        .IsUnique();
+                    b.HasIndex("ChatSessionId", "Timestamp");
 
-                    b.ToTable("CartItems");
+                    b.HasIndex("UserId", "Timestamp");
+
+                    b.ToTable("ChatMessages");
+                });
+
+            modelBuilder.Entity("AIShoppingAssistant.Models.ChatSession", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "EndedAt", "StartedAt");
+
+                    b.ToTable("ChatSessions");
                 });
 
             modelBuilder.Entity("AIShoppingAssistant.Models.Product", b =>
@@ -113,9 +137,9 @@ namespace AIShoppingAssistant.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<string>("ImageUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                    b.Property<string>("ImageFileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -140,288 +164,6 @@ namespace AIShoppingAssistant.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Products");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Category = "Clothing",
-                            Color = "White",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Soft cotton everyday t-shirt.",
-                            ImageUrl = "https://example.com/images/white-tshirt.jpg",
-                            Name = "Classic White T-Shirt",
-                            Price = 19.99m,
-                            ShippingCost = 4.99m,
-                            Size = "M",
-                            StoreName = "StyleHub"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            Category = "Clothing",
-                            Color = "Blue",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Denim jeans with a modern slim fit.",
-                            ImageUrl = "https://example.com/images/slim-jeans.jpg",
-                            Name = "Slim Fit Jeans",
-                            Price = 49.99m,
-                            ShippingCost = 6.99m,
-                            Size = "32",
-                            StoreName = "Denim Corner"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            Category = "Shoes",
-                            Color = "Black",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Lightweight sneakers for daily runs.",
-                            ImageUrl = "https://example.com/images/running-sneakers.jpg",
-                            Name = "Running Sneakers",
-                            Price = 89.50m,
-                            ShippingCost = 8.99m,
-                            Size = "9",
-                            StoreName = "FastFeet"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            Category = "Accessories",
-                            Color = "Brown",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Medium-sized handbag with zip closure.",
-                            ImageUrl = "https://example.com/images/leather-handbag.jpg",
-                            Name = "Leather Handbag",
-                            Price = 120.00m,
-                            ShippingCost = 10.50m,
-                            Size = "Medium",
-                            StoreName = "Urban Vogue"
-                        },
-                        new
-                        {
-                            Id = 5,
-                            Category = "Electronics",
-                            Color = "Silver",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Noise-reducing over-ear headphones.",
-                            ImageUrl = "https://example.com/images/wireless-headphones.jpg",
-                            Name = "Wireless Headphones",
-                            Price = 159.99m,
-                            ShippingCost = 12.99m,
-                            Size = "One Size",
-                            StoreName = "TechNest"
-                        },
-                        new
-                        {
-                            Id = 6,
-                            Category = "Activewear",
-                            Color = "Purple",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Stretch-fit leggings for workouts.",
-                            ImageUrl = "https://example.com/images/yoga-leggings.jpg",
-                            Name = "Yoga Leggings",
-                            Price = 34.95m,
-                            ShippingCost = 5.50m,
-                            Size = "S",
-                            StoreName = "ActiveLife"
-                        },
-                        new
-                        {
-                            Id = 7,
-                            Category = "Accessories",
-                            Color = "Gray",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Warm scarf for cooler weather.",
-                            ImageUrl = "https://example.com/images/wool-scarf.jpg",
-                            Name = "Wool Scarf",
-                            Price = 24.99m,
-                            ShippingCost = 3.99m,
-                            Size = "One Size",
-                            StoreName = "CozyWear"
-                        },
-                        new
-                        {
-                            Id = 8,
-                            Category = "Electronics",
-                            Color = "Black",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Fitness tracking smartwatch with notifications.",
-                            ImageUrl = "https://example.com/images/smart-watch.jpg",
-                            Name = "Smart Watch",
-                            Price = 199.99m,
-                            ShippingCost = 9.99m,
-                            Size = "42mm",
-                            StoreName = "TechNest"
-                        },
-                        new
-                        {
-                            Id = 9,
-                            Category = "Clothing",
-                            Color = "Light Blue",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Button-up shirt for office and events.",
-                            ImageUrl = "https://example.com/images/formal-shirt.jpg",
-                            Name = "Formal Shirt",
-                            Price = 39.99m,
-                            ShippingCost = 5.99m,
-                            Size = "L",
-                            StoreName = "StyleHub"
-                        },
-                        new
-                        {
-                            Id = 10,
-                            Category = "Bags",
-                            Color = "Olive",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Durable backpack for school or travel.",
-                            ImageUrl = "https://example.com/images/canvas-backpack.jpg",
-                            Name = "Canvas Backpack",
-                            Price = 54.99m,
-                            ShippingCost = 7.25m,
-                            Size = "Large",
-                            StoreName = "TrailLine"
-                        },
-                        new
-                        {
-                            Id = 11,
-                            Category = "Clothing",
-                            Color = "Yellow",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Light floral dress for warm days.",
-                            ImageUrl = "https://example.com/images/summer-dress.jpg",
-                            Name = "Summer Dress",
-                            Price = 62.49m,
-                            ShippingCost = 6.49m,
-                            Size = "M",
-                            StoreName = "Urban Vogue"
-                        },
-                        new
-                        {
-                            Id = 12,
-                            Category = "Accessories",
-                            Color = "Black",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Classic leather belt with metal buckle.",
-                            ImageUrl = "https://example.com/images/leather-belt.jpg",
-                            Name = "Leather Belt",
-                            Price = 22.00m,
-                            ShippingCost = 4.49m,
-                            Size = "34",
-                            StoreName = "Denim Corner"
-                        },
-                        new
-                        {
-                            Id = 13,
-                            Category = "Electronics",
-                            Color = "Red",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Ergonomic mouse with adjustable DPI.",
-                            ImageUrl = "https://example.com/images/gaming-mouse.jpg",
-                            Name = "Gaming Mouse",
-                            Price = 45.75m,
-                            ShippingCost = 5.99m,
-                            Size = "One Size",
-                            StoreName = "ClickZone"
-                        },
-                        new
-                        {
-                            Id = 14,
-                            Category = "Outerwear",
-                            Color = "Navy",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Insulated jacket for winter weather.",
-                            ImageUrl = "https://example.com/images/puffer-jacket.jpg",
-                            Name = "Puffer Jacket",
-                            Price = 140.00m,
-                            ShippingCost = 11.99m,
-                            Size = "XL",
-                            StoreName = "CozyWear"
-                        },
-                        new
-                        {
-                            Id = 15,
-                            Category = "Home Appliances",
-                            Color = "White",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "High-speed blender for smoothies and soups.",
-                            ImageUrl = "https://example.com/images/kitchen-blender.jpg",
-                            Name = "Kitchen Blender",
-                            Price = 79.99m,
-                            ShippingCost = 13.50m,
-                            Size = "1.5L",
-                            StoreName = "HomeEase"
-                        },
-                        new
-                        {
-                            Id = 16,
-                            Category = "Accessories",
-                            Color = "Green",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Adjustable cap with breathable fabric.",
-                            ImageUrl = "https://example.com/images/sports-cap.jpg",
-                            Name = "Sports Cap",
-                            Price = 18.50m,
-                            ShippingCost = 3.75m,
-                            Size = "One Size",
-                            StoreName = "ActiveLife"
-                        },
-                        new
-                        {
-                            Id = 17,
-                            Category = "Shoes",
-                            Color = "Tan",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Stylish boots with side zipper.",
-                            ImageUrl = "https://example.com/images/ankle-boots.jpg",
-                            Name = "Ankle Boots",
-                            Price = 95.00m,
-                            ShippingCost = 8.50m,
-                            Size = "8",
-                            StoreName = "FastFeet"
-                        },
-                        new
-                        {
-                            Id = 18,
-                            Category = "Home Decor",
-                            Color = "Silver",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "LED desk lamp with adjustable brightness.",
-                            ImageUrl = "https://example.com/images/desk-lamp.jpg",
-                            Name = "Desk Lamp",
-                            Price = 31.20m,
-                            ShippingCost = 6.25m,
-                            Size = "Medium",
-                            StoreName = "HomeEase"
-                        },
-                        new
-                        {
-                            Id = 19,
-                            Category = "Accessories",
-                            Color = "Black",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "UV-protected sunglasses with slim frame.",
-                            ImageUrl = "https://example.com/images/sunglasses.jpg",
-                            Name = "Sunglasses",
-                            Price = 27.99m,
-                            ShippingCost = 4.20m,
-                            Size = "One Size",
-                            StoreName = "StyleHub"
-                        },
-                        new
-                        {
-                            Id = 20,
-                            Category = "Electronics",
-                            Color = "Blue",
-                            CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Bluetooth speaker with rich sound.",
-                            ImageUrl = "https://example.com/images/portable-speaker.jpg",
-                            Name = "Portable Speaker",
-                            Price = 68.80m,
-                            ShippingCost = 7.80m,
-                            Size = "Compact",
-                            StoreName = "ClickZone"
-                        });
                 });
 
             modelBuilder.Entity("AIShoppingAssistant.Models.PurchaseHistory", b =>
@@ -486,6 +228,39 @@ namespace AIShoppingAssistant.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("SearchHistories");
+                });
+
+            modelBuilder.Entity("AIShoppingAssistant.Models.ShoppingListItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime>("SelectedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("ShoppingListItems");
                 });
 
             modelBuilder.Entity("AIShoppingAssistant.Models.User", b =>
@@ -573,10 +348,29 @@ namespace AIShoppingAssistant.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("AIShoppingAssistant.Models.CartItem", b =>
+            modelBuilder.Entity("AIShoppingAssistant.Models.ChatMessage", b =>
+                {
+                    b.HasOne("AIShoppingAssistant.Models.ChatSession", "ChatSession")
+                        .WithMany("Messages")
+                        .HasForeignKey("ChatSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AIShoppingAssistant.Models.User", "User")
+                        .WithMany("ChatMessages")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ChatSession");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AIShoppingAssistant.Models.ChatSession", b =>
                 {
                     b.HasOne("AIShoppingAssistant.Models.User", "User")
-                        .WithMany("CartItems")
+                        .WithMany("ChatSessions")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -606,6 +400,17 @@ namespace AIShoppingAssistant.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AIShoppingAssistant.Models.ShoppingListItem", b =>
+                {
+                    b.HasOne("AIShoppingAssistant.Models.User", "User")
+                        .WithMany("ShoppingListItems")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("AIShoppingAssistant.Models.UserPreference", b =>
                 {
                     b.HasOne("AIShoppingAssistant.Models.User", "User")
@@ -617,15 +422,24 @@ namespace AIShoppingAssistant.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AIShoppingAssistant.Models.ChatSession", b =>
+                {
+                    b.Navigation("Messages");
+                });
+
             modelBuilder.Entity("AIShoppingAssistant.Models.User", b =>
                 {
                     b.Navigation("Budgets");
 
-                    b.Navigation("CartItems");
+                    b.Navigation("ChatMessages");
+
+                    b.Navigation("ChatSessions");
 
                     b.Navigation("PurchaseHistories");
 
                     b.Navigation("SearchHistories");
+
+                    b.Navigation("ShoppingListItems");
 
                     b.Navigation("UserPreference");
                 });

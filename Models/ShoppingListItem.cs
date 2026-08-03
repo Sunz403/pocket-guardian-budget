@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AIShoppingAssistant.Models;
 
-public class CartItem
+public class ShoppingListItem
 {
     public int Id { get; set; }
 
@@ -23,9 +23,6 @@ public class CartItem
     [Range(0, 999999.99)]
     public decimal Price { get; set; }
 
-    [Range(1, 999)]
-    public int Quantity { get; set; }
-
     [Required]
-    public DateTime AddedDate { get; set; } = DateTime.UtcNow;
+    public DateTime SelectedDate { get; set; } = DateTime.UtcNow;
 }

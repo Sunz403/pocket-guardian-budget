@@ -30,7 +30,11 @@ public class User
 
     public ICollection<Budget> Budgets { get; set; } = new List<Budget>();
 
-    public ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
+    public ICollection<ShoppingListItem> ShoppingListItems { get; set; } = new List<ShoppingListItem>();
 
     public ICollection<PurchaseHistory> PurchaseHistories { get; set; } = new List<PurchaseHistory>();
+
+    public ICollection<ChatSession> ChatSessions { get; set; } = new List<ChatSession>();
+
+    public ICollection<ChatMessage> ChatMessages { get; set; } = new List<ChatMessage>();
 }

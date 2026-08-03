@@ -24,9 +24,13 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Budget> Budgets { get; set; }
 
-    public DbSet<CartItem> CartItems { get; set; }
+    public DbSet<ShoppingListItem> ShoppingListItems { get; set; }
 
     public DbSet<PurchaseHistory> PurchaseHistories { get; set; }
+
+    public DbSet<ChatSession> ChatSessions { get; set; }
+
+    public DbSet<ChatMessage> ChatMessages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,14 +96,14 @@ public class ApplicationDbContext : DbContext
                 .IsUnique();
         });
 
-        modelBuilder.Entity<CartItem>(entity =>
+        modelBuilder.Entity<ShoppingListItem>(entity =>
         {
-            entity.HasOne(cartItem => cartItem.User)
-                .WithMany(user => user.CartItems)
-                .HasForeignKey(cartItem => cartItem.UserId)
+            entity.HasOne(item => item.User)
+                .WithMany(user => user.ShoppingListItems)
+                .HasForeignKey(item => item.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(cartItem => new { cartItem.UserId, cartItem.ProductId })
+            entity.HasIndex(item => new { item.UserId, item.ProductId })
                 .IsUnique();
         });
 
@@ -113,8 +117,30 @@ public class ApplicationDbContext : DbContext
             entity.Property(purchase => purchase.Items).HasColumnType("nvarchar(max)");
         });
 
-        modelBuilder.Entity<Product>().HasData(
-            new Product { Id = 1, Name = "Classic White T-Shirt", Description = "Soft cotton everyday t-shirt.", Price = 19.99m, Color = "White", Size = "M", ShippingCost = 4.99m, StoreName = "StyleHub", Category = "Clothing", ImageUrl = "https://example.com/images/white-tshirt.jpg", CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc) },
+        modelBuilder.Entity<ChatSession>(entity =>
+        {
+            entity.HasOne(session => session.User)
+                .WithMany(user => user.ChatSessions)
+                .HasForeignKey(session => session.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(session => new { session.UserId, session.EndedAt, session.StartedAt });
+        });
+
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.HasOne(message => message.ChatSession)
+                .WithMany(session => session.Messages)
+                .HasForeignKey(message => message.ChatSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(message => message.User)
+                .WithMany(user => user.ChatMessages)
+                .HasForeignKey(message => message.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(message => new { message.ChatSessionId, message.Timestamp });
+            entity.HasIndex(message => new { message.UserId, message.Timestamp });
+        });
+
+        /* Product data is seeded at application startup so images are not represented by stale external URLs.
             new Product { Id = 2, Name = "Slim Fit Jeans", Description = "Denim jeans with a modern slim fit.", Price = 49.99m, Color = "Blue", Size = "32", ShippingCost = 6.99m, StoreName = "Denim Corner", Category = "Clothing", ImageUrl = "https://example.com/images/slim-jeans.jpg", CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc) },
             new Product { Id = 3, Name = "Running Sneakers", Description = "Lightweight sneakers for daily runs.", Price = 89.50m, Color = "Black", Size = "9", ShippingCost = 8.99m, StoreName = "FastFeet", Category = "Shoes", ImageUrl = "https://example.com/images/running-sneakers.jpg", CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc) },
             new Product { Id = 4, Name = "Leather Handbag", Description = "Medium-sized handbag with zip closure.", Price = 120.00m, Color = "Brown", Size = "Medium", ShippingCost = 10.50m, StoreName = "Urban Vogue", Category = "Accessories", ImageUrl = "https://example.com/images/leather-handbag.jpg", CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc) },
@@ -134,7 +160,7 @@ public class ApplicationDbContext : DbContext
             new Product { Id = 18, Name = "Desk Lamp", Description = "LED desk lamp with adjustable brightness.", Price = 31.20m, Color = "Silver", Size = "Medium", ShippingCost = 6.25m, StoreName = "HomeEase", Category = "Home Decor", ImageUrl = "https://example.com/images/desk-lamp.jpg", CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc) },
             new Product { Id = 19, Name = "Sunglasses", Description = "UV-protected sunglasses with slim frame.", Price = 27.99m, Color = "Black", Size = "One Size", ShippingCost = 4.20m, StoreName = "StyleHub", Category = "Accessories", ImageUrl = "https://example.com/images/sunglasses.jpg", CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc) },
             new Product { Id = 20, Name = "Portable Speaker", Description = "Bluetooth speaker with rich sound.", Price = 68.80m, Color = "Blue", Size = "Compact", ShippingCost = 7.80m, StoreName = "ClickZone", Category = "Electronics", ImageUrl = "https://example.com/images/portable-speaker.jpg", CreatedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc) }
-        );
+        ); */
     }
 
     private static ValueComparer<List<string>> CreateStringListComparer()

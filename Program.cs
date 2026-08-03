@@ -71,6 +71,8 @@ builder.Services.AddScoped<IAIService>(serviceProvider =>
     serviceProvider.GetRequiredService<AIServiceFactory>().Create());
 builder.Services.AddScoped<RecommendationService>();
 builder.Services.AddScoped<LocationService>();
+builder.Services.AddScoped<StoreService>();
+builder.Services.AddScoped<FileUploadService>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -92,6 +94,7 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     context.Database.Migrate();
+    EnsureChatSchema(context);
     SeedDatabase(context);
 }
 
@@ -141,6 +144,67 @@ app.MapGet("/testai", context =>
 });
 
 app.Run();
+
+static void EnsureChatSchema(ApplicationDbContext context)
+{
+    // Some existing databases have the chat migration recorded in
+    // __EFMigrationsHistory even though its tables are absent. Keep startup
+    // resilient to that historical schema drift.
+    context.Database.ExecuteSqlRaw("""
+        IF OBJECT_ID(N'[ChatSessions]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [ChatSessions] (
+                [Id] nvarchar(64) NOT NULL,
+                [UserId] int NOT NULL,
+                [StartedAt] datetime2 NOT NULL,
+                [EndedAt] datetime2 NULL,
+                CONSTRAINT [PK_ChatSessions] PRIMARY KEY ([Id]),
+                CONSTRAINT [FK_ChatSessions_Users_UserId]
+                    FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE CASCADE
+            );
+            CREATE INDEX [IX_ChatSessions_UserId_EndedAt_StartedAt]
+                ON [ChatSessions] ([UserId], [EndedAt], [StartedAt]);
+        END;
+
+        IF OBJECT_ID(N'[ChatMessages]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [ChatMessages] (
+                [Id] int NOT NULL IDENTITY,
+                [UserId] int NOT NULL,
+                [Message] nvarchar(4000) NOT NULL,
+                [Sender] nvarchar(10) NOT NULL,
+                [Timestamp] datetime2 NOT NULL,
+                [ChatSessionId] nvarchar(64) NOT NULL,
+                CONSTRAINT [PK_ChatMessages] PRIMARY KEY ([Id]),
+                CONSTRAINT [FK_ChatMessages_ChatSessions_ChatSessionId]
+                    FOREIGN KEY ([ChatSessionId]) REFERENCES [ChatSessions] ([Id]) ON DELETE CASCADE,
+                CONSTRAINT [FK_ChatMessages_Users_UserId]
+                    FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id])
+            );
+            CREATE INDEX [IX_ChatMessages_ChatSessionId_Timestamp]
+                ON [ChatMessages] ([ChatSessionId], [Timestamp]);
+            CREATE INDEX [IX_ChatMessages_UserId_Timestamp]
+                ON [ChatMessages] ([UserId], [Timestamp]);
+        END;
+
+        IF OBJECT_ID(N'[ShoppingListItems]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [ShoppingListItems] (
+                [Id] int NOT NULL IDENTITY,
+                [UserId] int NOT NULL,
+                [ProductId] int NOT NULL,
+                [ProductName] nvarchar(150) NOT NULL,
+                [Price] decimal(18,2) NOT NULL,
+                [SelectedDate] datetime2 NOT NULL,
+                CONSTRAINT [PK_ShoppingListItems] PRIMARY KEY ([Id]),
+                CONSTRAINT [FK_ShoppingListItems_Users_UserId]
+                    FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX [IX_ShoppingListItems_UserId_ProductId]
+                ON [ShoppingListItems] ([UserId], [ProductId]);
+        END;
+        """);
+}
 
 static void SeedDatabase(ApplicationDbContext context)
 {
@@ -203,13 +267,6 @@ static void SeedDatabase(ApplicationDbContext context)
         new SearchHistory { UserId = users[2].Id, SearchTerm = "smart TV deals", Budget = 4500m, Location = "Durban", SearchDate = monthStart.AddDays(6), ResultsCount = 7 },
         new SearchHistory { UserId = users[3].Id, SearchTerm = "black school shoes", Budget = 400m, Location = "Pretoria", SearchDate = monthStart.AddDays(8), ResultsCount = 6 },
         new SearchHistory { UserId = users[4].Id, SearchTerm = "South African cookbooks", Budget = 300m, Location = "Johannesburg", SearchDate = monthStart.AddDays(10), ResultsCount = 4 });
-
-    context.CartItems.AddRange(
-        new CartItem { UserId = users[0].Id, ProductId = products[0].Id, ProductName = products[0].Name, Price = products[0].Price, Quantity = 1, AddedDate = monthStart.AddDays(3) },
-        new CartItem { UserId = users[1].Id, ProductId = products[2].Id, ProductName = products[2].Name, Price = products[2].Price, Quantity = 2, AddedDate = monthStart.AddDays(5) },
-        new CartItem { UserId = users[2].Id, ProductId = products[1].Id, ProductName = products[1].Name, Price = products[1].Price, Quantity = 1, AddedDate = monthStart.AddDays(7) },
-        new CartItem { UserId = users[3].Id, ProductId = products[3].Id, ProductName = products[3].Name, Price = products[3].Price, Quantity = 1, AddedDate = monthStart.AddDays(9) },
-        new CartItem { UserId = users[4].Id, ProductId = products[4].Id, ProductName = products[4].Name, Price = products[4].Price, Quantity = 1, AddedDate = monthStart.AddDays(11) });
 
     context.PurchaseHistories.AddRange(
         BuildPurchase(users[0].Id, products[0], 1, monthStart.AddDays(4)),
@@ -286,7 +343,7 @@ static void EnsureCurrentMonthBudgets(ApplicationDbContext context)
 static PurchaseHistory BuildPurchase(int userId, Product product, int quantity, DateTime purchaseDate)
 {
     var lineTotal = product.Price * quantity;
-    var items = new List<CartItemDto>
+    var items = new List<PurchaseItemSnapshotDto>
     {
         new()
         {

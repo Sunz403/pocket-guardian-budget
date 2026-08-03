@@ -1,0 +1,92 @@
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Product catalog";
+    var categories = JsonSerializer.Serialize((IEnumerable<string>)ViewBag.Categories);
+    var stores = JsonSerializer.Serialize((IEnumerable<string>)ViewBag.Stores);
+}
+
+<section class="catalog-page">
+    <nav class="catalog-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/Catalog">Catalog</a><span>/</span><strong>Electronics</strong></nav>
+    <div class="catalog-title-row">
+        <div><p class="catalog-eyebrow">PLAN WITH CONFIDENCE</p><h1>Explore products</h1><p>Choose what you need and see exactly how it fits into your month.</p></div>
+        <span id="resultCount" class="catalog-result-count">Loading products</span>
+    </div>
+    <div id="catalogAlert" class="alert d-none" role="alert"></div>
+
+    <div class="catalog-layout">
+        <aside class="catalog-filters" aria-label="Product filters">
+            <div class="filter-heading"><div><span class="filter-icon">⌘</span><h2>Filters</h2></div><button id="resetFilters" class="reset-filters" type="button">Reset filters</button></div>
+            <div class="filter-accordion" id="filterAccordion">
+                <section class="filter-section is-open">
+                    <button class="filter-toggle" type="button" aria-expanded="true"><span>Category</span><span class="chevron">⌄</span></button>
+                    <div class="filter-content" id="categoryChecks"></div>
+                </section>
+                <section class="filter-section is-open">
+                    <button class="filter-toggle" type="button" aria-expanded="true"><span>Price range</span><span class="chevron">⌄</span></button>
+                    <div class="filter-content">
+                        <div class="range-labels"><span id="minPriceLabel">R0</span><span id="maxPriceLabel">R10,000</span></div>
+                        <div class="dual-range"><input id="minPrice" type="range" min="0" max="10000" value="0" step="50" aria-label="Minimum price"><input id="maxPrice" type="range" min="0" max="10000" value="10000" step="50" aria-label="Maximum price"></div>
+                        <p class="range-hint">Set a comfortable spending range</p>
+                    </div>
+                </section>
+                <section class="filter-section is-open">
+                    <button class="filter-toggle" type="button" aria-expanded="true"><span>Store</span><span class="chevron">⌄</span></button>
+                    <div class="filter-content" id="storeChecks"></div>
+                </section>
+                <section class="filter-section is-open">
+                    <button class="filter-toggle" type="button" aria-expanded="true"><span>Sort by</span><span class="chevron">⌄</span></button>
+                    <div class="filter-content"><select id="sortFilter" class="catalog-select" aria-label="Sort products"><option value="priceLowToHigh">Price: Low–High</option><option value="priceHighToLow">Price: High–Low</option><option value="nameAsc">Name: A–Z</option></select></div>
+                </section>
+            </div>
+            <button id="applyFilters" class="apply-filters" type="button">Apply filters <span>→</span></button>
+        </aside>
+
+        <div class="catalog-products-wrap">
+            <div class="catalog-toolbar"><div class="catalog-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg><input id="catalogSearch" type="search" placeholder="Search products, stores or categories" aria-label="Search catalog"></div><span class="toolbar-note">Tap Select to add to your list</span></div>
+            <div id="catalogGrid" class="catalog-grid" aria-live="polite"></div>
+        </div>
+    </div>
+
+    <aside class="budget-summary" aria-label="Budget summary">
+        <div class="budget-summary-top"><span class="budget-summary-icon">R</span><div><p>YOUR MONTHLY PLAN</p><h2>Budget summary</h2></div></div>
+        <div class="budget-line"><span>Monthly budget</span><strong id="monthlyBudget">R5,000</strong></div>
+        <div class="budget-line"><span>Selected items</span><strong id="selectedItems">R0</strong></div>
+        <div class="budget-progress-meta"><span>Budget used</span><strong id="percentageUsed">0%</strong></div><div class="budget-progress"><span id="budgetProgress"></span></div>
+        <div class="budget-remaining"><span>Remaining</span><strong id="remainingBudget">R5,000</strong></div>
+        <a href="/ShoppingList" class="view-list-btn">View shopping list <span>→</span></a>
+    </aside>
+</section>
+
+@section Scripts {
+<script>
+(() => {
+    const categories = @Html.Raw(categories), stores = @Html.Raw(stores);
+    const grid = document.getElementById('catalogGrid'), alertBox = document.getElementById('catalogAlert');
+    const search = document.getElementById('catalogSearch'), sort = document.getElementById('sortFilter');
+    const min = document.getElementById('minPrice'), max = document.getElementById('maxPrice');
+    let selectedIds = new Set(), allProducts = [];
+    const preferredCategories = ['Electronics','Groceries','Clothing','Shoes','Books'];
+    const preferredStores = ['Woolworths','Checkers','Takealot','Game','Makro'];
+    makeChecks('categoryChecks', [...new Set([...preferredCategories, ...categories])], 'category');
+    makeChecks('storeChecks', [...new Set([...preferredStores, ...stores])], 'store');
+    document.querySelectorAll('.filter-toggle').forEach(button => button.addEventListener('click', () => { const section = button.closest('.filter-section'); const open = section.classList.toggle('is-open'); button.setAttribute('aria-expanded', String(open)); }));
+    [min,max].forEach(input => input.addEventListener('input', updateRange)); updateRange();
+    document.getElementById('applyFilters').addEventListener('click', load);
+    document.getElementById('resetFilters').addEventListener('click', () => { document.querySelectorAll('.filter-content input[type=checkbox]').forEach(x => x.checked=false); min.value=0; max.value=10000; search.value=''; sort.value='priceLowToHigh'; updateRange(); load(); });
+    search.addEventListener('input', debounce(render, 150)); sort.addEventListener('change', load);
+    grid.addEventListener('click', async event => { const button = event.target.closest('[data-select-item]'); if (!button || selectedIds.has(+button.dataset.selectItem)) return; button.disabled = true; try { const response = await fetch(`/ShoppingList/Add/${button.dataset.selectItem}`, { method:'POST', headers:{Accept:'application/json'} }); const data = await readJson(response); if (!response.ok) throw new Error(data.message || 'Could not add that item.'); selectedIds = new Set(data.items.map(x => x.productId)); updateBudget(data); render(); } catch(error) { show(error.message || 'Could not add that item.', 'danger'); button.disabled = false; } });
+    async function load() { grid.innerHTML = skeletons(); const params = new URLSearchParams({ sortBy:sort.value, minPrice:min.value, maxPrice:max.value }); const storeValues=checked('store'); if (storeValues.length === 1) params.set('storeName',storeValues[0]); const response=await fetch('/api/products/search?'+params); if(!response.ok){show('Could not load the catalog. Please try again.','danger');return;} allProducts=await response.json(); render(); }
+    function render() { const query=search.value.trim().toLowerCase(), categoryValues=checked('category'), storeValues=checked('store'); const products=allProducts.filter(p => (!categoryValues.length || categoryValues.includes(p.category)) && (!storeValues.length || storeValues.includes(p.storeName)) && (!query || [p.name,p.storeName,p.category,p.description].filter(Boolean).join(' ').toLowerCase().includes(query))); document.getElementById('resultCount').textContent=`${products.length} product${products.length===1?'':'s'} found`; grid.innerHTML=products.length?products.map((p,i)=>card(p,i)).join(''):'<div class="catalog-empty"><strong>No matches found</strong><span>Try clearing a filter or widening your price range.</span></div>'; }
+    function card(p,i) { const selected=selectedIds.has(p.id), sale=i%4===0; return `<article class="catalog-product-card"><div class="product-card-top">${sale?'<span class="sale-badge">On sale</span>':'<span></span>'}<button class="select-product-btn ${selected?'is-selected':''}" type="button" data-select-item="${p.id}" ${selected?'disabled':''}>${selected?'<span>✓</span> Selected':'Select'}</button></div><div class="product-image-wrap"><img src="${escapeAttribute(p.imageUrl||'/images/products/product-placeholder.svg')}" alt="${escapeAttribute(p.name)}"></div><div class="product-card-content"><p class="product-category">${escapeHtml(p.category)}</p><h2>${escapeHtml(p.name)}</h2><div class="product-price">${money(p.price)}</div><p class="product-store">${escapeHtml(p.storeName)}</p><div class="product-bottom"><span class="delivery-copy">${i%2?'Est. delivery 2–4 days':'Ready for collection'}</span><span class="stock-status">${i%3===0?'Low stock':'In stock'}</span></div></div></article>`; }
+    async function getSummary(){ try { const response=await fetch('/ShoppingList/Data'); if(response.ok){const data=await response.json(); selectedIds=new Set(data.items.map(x=>x.productId));updateBudget(data);}}catch{} }
+    function updateBudget(data){const used=Math.min(Math.max(Number(data.percentageUsed)||0,0),100); document.getElementById('monthlyBudget').textContent=money(data.monthlyBudget);document.getElementById('selectedItems').textContent=money(data.selectedTotal);document.getElementById('remainingBudget').textContent=money(data.remainingBudget);document.getElementById('percentageUsed').textContent=`${Math.round(data.percentageUsed||0)}%`;document.getElementById('budgetProgress').style.width=`${used}%`;}
+    function makeChecks(target,values,name){document.getElementById(target).innerHTML=values.map(value=>`<label class="catalog-check"><input type="checkbox" name="${name}" value="${escapeAttribute(value)}"><span>${escapeHtml(value)}</span></label>`).join('');}
+    function checked(name){return [...document.querySelectorAll(`input[name=${name}]:checked`)].map(x=>x.value);}
+    function updateRange(){if(+min.value>+max.value)[min.value,max.value]=[max.value,min.value];document.getElementById('minPriceLabel').textContent=money(min.value);document.getElementById('maxPriceLabel').textContent=money(max.value);}
+    async function readJson(response){const text=await response.text();try{return JSON.parse(text);}catch{return {message:response.ok?'The server returned an unexpected response.':'The Shopping List could not be updated. Please restart the app and try again.'};}}
+    function money(value){return new Intl.NumberFormat('en-ZA',{style:'currency',currency:'ZAR',maximumFractionDigits:0}).format(value);}
+    function escapeHtml(value){const e=document.createElement('span');e.textContent=value||'';return e.innerHTML;} function escapeAttribute(value){return escapeHtml(value).replace(/"/g,'&quot;');} function show(message,type){alertBox.textContent=message;alertBox.className=`alert alert-${type}`;} function debounce(fn,wait){let id;return()=>{clearTimeout(id);id=setTimeout(fn,wait);};} function skeletons(){return '<div class="catalog-loading">Loading your catalog…</div>'.repeat(3);}
+    Promise.all([getSummary(),load()]);
+})();
+</script>
+}
