@@ -18,6 +18,10 @@ public class ProductResponseDto
 
     public string StoreName { get; set; } = string.Empty;
 
+    public string? StoreAddress { get; set; }
+
+    public double? DistanceKm { get; set; }
+
     public string Category { get; set; } = string.Empty;
 
     public string? ImageUrl { get; set; }

@@ -11,20 +11,20 @@ public sealed class LocationService
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromDays(7);
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly OpenCageOptions _openCageOptions;
-    private readonly StoreLocationsOptions _storeLocations;
+    private readonly StoreService _storeService;
     private readonly ILogger<LocationService> _logger;
     private readonly IMemoryCache _cache;
 
     public LocationService(
         IHttpClientFactory httpClientFactory,
         IOptions<OpenCageOptions> openCageOptions,
-        IOptions<StoreLocationsOptions> storeLocations,
+        StoreService storeService,
         ILogger<LocationService> logger,
         IMemoryCache cache)
     {
         _httpClientFactory = httpClientFactory;
         _openCageOptions = openCageOptions.Value;
-        _storeLocations = storeLocations.Value;
+        _storeService = storeService;
         _logger = logger;
         _cache = cache;
     }
@@ -43,7 +43,9 @@ public sealed class LocationService
         }
 
         var client = _httpClientFactory.CreateClient("OpenCage");
-        var requestUri = $"geocode/v1/json?q={Uri.EscapeDataString(location)}&key={Uri.EscapeDataString(_openCageOptions.ApiKey)}&limit=1&no_annotations=1";
+        // Postal codes are ambiguous globally, so use the application's market.
+        var query = $"{location.Trim()}, South Africa";
+        var requestUri = $"geocode/v1/json?q={Uri.EscapeDataString(query)}&key={Uri.EscapeDataString(_openCageOptions.ApiKey)}&limit=1&no_annotations=1";
         try
         {
             using var response = await client.GetAsync(requestUri, cancellationToken);
@@ -94,27 +96,21 @@ public sealed class LocationService
         if (origin is null)
             return new List<string>();
 
-        return _storeLocations.Stores
-            .Where(store => !string.IsNullOrWhiteSpace(store.Name))
-            .Where(store => StoreService.CalculateDistanceInKilometers(origin, new GeoCoordinates
-            {
-                Latitude = store.Latitude,
-                Longitude = store.Longitude
-            }) <= radiusInKilometers)
-            .Select(store => store.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var stores = await _storeService.GetNearbyStoresAsync(origin, radiusInKilometers, cancellationToken);
+        return stores.Select(store => store.Name).ToList();
     }
 
     private static string CacheKey(string location) => $"opencage-geocode:{location}";
 
     private sealed class OpenCageResponse
     {
+        [JsonPropertyName("results")]
         public List<OpenCageResult>? Results { get; set; }
     }
 
     private sealed class OpenCageResult
     {
+        [JsonPropertyName("geometry")]
         public OpenCageGeometry? Geometry { get; set; }
     }
 

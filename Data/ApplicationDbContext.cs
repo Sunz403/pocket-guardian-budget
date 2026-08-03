@@ -18,6 +18,8 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Product> Products { get; set; }
 
+    public DbSet<Store> Stores { get; set; }
+
     public DbSet<UserPreference> UserPreferences { get; set; }
 
     public DbSet<SearchHistory> SearchHistories { get; set; }
@@ -45,6 +47,22 @@ public class ApplicationDbContext : DbContext
                 .WithOne(preference => preference.User)
                 .HasForeignKey<UserPreference>(preference => preference.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Store>(entity =>
+        {
+            entity.HasIndex(store => store.Name).IsUnique();
+            entity.Property(store => store.Latitude).HasColumnType("float");
+            entity.Property(store => store.Longitude).HasColumnType("float");
+        });
+
+        modelBuilder.Entity<Product>(entity =>
+        {
+            entity.HasOne(product => product.Store)
+                .WithMany(store => store.Products)
+                .HasForeignKey(product => product.StoreId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(product => product.StoreId);
         });
 
         modelBuilder.Entity<UserPreference>(entity =>

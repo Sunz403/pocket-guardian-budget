@@ -33,6 +33,11 @@ public class Product
     [StringLength(100)]
     public string StoreName { get; set; } = string.Empty;
 
+    // StoreName is retained for existing catalog data; StoreId enables geographic searches.
+    public int? StoreId { get; set; }
+
+    public Store? Store { get; set; }
+
     [Required]
     [StringLength(100)]
     public string Category { get; set; } = string.Empty;

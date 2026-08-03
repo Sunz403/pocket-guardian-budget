@@ -95,7 +95,9 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     context.Database.Migrate();
     EnsureChatSchema(context);
+    SeedStores(context);
     SeedDatabase(context);
+    LinkProductsToStores(context);
 }
 
 if (app.Environment.IsDevelopment())
@@ -277,6 +279,45 @@ static void SeedDatabase(ApplicationDbContext context)
 
     context.SaveChanges();
     EnsureShoppingAssistantTestProducts(context);
+}
+
+static void SeedStores(ApplicationDbContext context)
+{
+    var durbanStores = new[]
+    {
+        new Store { Name = "Gateway Mall", Address = "1 Palm Boulevard, Umhlanga Ridge, Durban, 4320", Latitude = -29.7207, Longitude = 31.0774, Category = "Shopping Mall" },
+        new Store { Name = "Woolworths Musgrave", Address = "115 Musgrave Road, Musgrave, Durban, 4001", Latitude = -29.8447, Longitude = 30.9985, Category = "Grocery" },
+        new Store { Name = "Checkers Hyper By The Sea", Address = "Cnr Lighthouse Road and Battery Beach Road, Durban, 4001", Latitude = -29.8500, Longitude = 31.0300, Category = "Grocery" },
+        new Store { Name = "Pick n Pay Hyper Savages", Address = "144 Helen Joseph Road, Glenwood, Durban, 4001", Latitude = -29.8733, Longitude = 30.9933, Category = "Grocery" },
+        new Store { Name = "Game Musgrave Centre", Address = "115 Musgrave Road, Musgrave, Durban, 4001", Latitude = -29.8447, Longitude = 30.9985, Category = "Retail" },
+        new Store { Name = "Makro Durban", Address = "1 Bellville Road, Durban, 4001", Latitude = -29.8733, Longitude = 31.0400, Category = "Retail" },
+        new Store { Name = "SPAR Glenwood", Address = "474 Roberts Road, Glenwood, Durban, 4001", Latitude = -29.8733, Longitude = 30.9933, Category = "Grocery" },
+        new Store { Name = "The Pavilion Shopping Centre", Address = "20 Quarry Road, Westville, Durban, 3629", Latitude = -29.8200, Longitude = 30.9300, Category = "Shopping Mall" },
+        new Store { Name = "Clicks Musgrave", Address = "115 Musgrave Road, Musgrave, Durban, 4001", Latitude = -29.8447, Longitude = 30.9985, Category = "Pharmacy" },
+        new Store { Name = "Dis-Chem Gateway", Address = "1 Palm Boulevard, Umhlanga Ridge, Durban, 4320", Latitude = -29.7207, Longitude = 31.0774, Category = "Pharmacy" }
+    };
+
+    foreach (var store in durbanStores)
+    {
+        if (!context.Stores.Any(existing => existing.Name == store.Name)) context.Stores.Add(store);
+    }
+
+    context.SaveChanges();
+}
+
+static void LinkProductsToStores(ApplicationDbContext context)
+{
+    var stores = context.Stores.ToList();
+    var unmatchedProducts = context.Products.Where(product => product.StoreId == null).ToList();
+    foreach (var product in unmatchedProducts)
+    {
+        var store = stores.FirstOrDefault(candidate =>
+            candidate.Name.Contains(product.StoreName, StringComparison.OrdinalIgnoreCase) ||
+            product.StoreName.Contains(candidate.Name, StringComparison.OrdinalIgnoreCase));
+        if (store is not null) product.StoreId = store.Id;
+    }
+
+    context.SaveChanges();
 }
 
 static void EnsureShoppingAssistantTestProducts(ApplicationDbContext context)
