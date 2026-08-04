@@ -33,7 +33,7 @@ public class AdminProductsController : Controller
     public IActionResult Create() => View(new Product());
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create([Bind("Name,Description,Price,Color,Size,ShippingCost,StoreName,Category")] Product product, IFormFile? imageFile, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create([Bind("Name,Description,Price,Color,Size,ShippingCost,StoreName,StoreUrl,Category")] Product product, IFormFile? imageFile, CancellationToken cancellationToken)
     {
         if (imageFile is not null && !_fileUploadService.ValidateImage(imageFile))
             ModelState.AddModelError("ImageFile", "Upload a JPG, JPEG, PNG, GIF, or WEBP image no larger than 5 MB.");
@@ -63,7 +63,7 @@ public class AdminProductsController : Controller
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Description,Price,Color,Size,ShippingCost,StoreName,Category")] Product submittedProduct, IFormFile? imageFile, CancellationToken cancellationToken)
+    public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Description,Price,Color,Size,ShippingCost,StoreName,StoreUrl,Category")] Product submittedProduct, IFormFile? imageFile, CancellationToken cancellationToken)
     {
         if (id != submittedProduct.Id) return NotFound();
         var product = await _context.Products.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -83,6 +83,7 @@ public class AdminProductsController : Controller
         product.Size = submittedProduct.Size;
         product.ShippingCost = submittedProduct.ShippingCost;
         product.StoreName = submittedProduct.StoreName;
+        product.StoreUrl = submittedProduct.StoreUrl;
         product.Category = submittedProduct.Category;
         var previousImageFileName = product.ImageFileName;
         if (imageFile is not null) product.ImageFileName = await _fileUploadService.UploadImageAsync(imageFile, cancellationToken);
