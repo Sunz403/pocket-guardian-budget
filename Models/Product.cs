@@ -33,6 +33,10 @@ public class Product
     [StringLength(100)]
     public string StoreName { get; set; } = string.Empty;
 
+    [StringLength(2048)]
+    [RegularExpression(@"^https?://.+", ErrorMessage = "Store URL must start with http:// or https://.")]
+    public string? StoreUrl { get; set; }
+
     // StoreName is retained for existing catalog data; StoreId enables geographic searches.
     public int? StoreId { get; set; }
 

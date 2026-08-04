@@ -97,6 +97,7 @@ using (var scope = app.Services.CreateScope())
     EnsureChatSchema(context);
     SeedStores(context);
     SeedDatabase(context);
+    EnsureStoreUrls(context);
     LinkProductsToStores(context);
 }
 
@@ -239,9 +240,9 @@ static void SeedDatabase(ApplicationDbContext context)
 
     var products = new List<Product>
     {
-        new() { Name = "Checkers Family Grocery Hamper", Description = "Pantry staples with maize meal, rice, pasta, tinned food, and tea.", Price = 549.99m, ShippingCost = 35.00m, StoreName = "Checkers", Category = "Groceries", Size = "Family Pack", CreatedAt = now },
-        new() { Name = "Samsung 32-inch Smart TV", Description = "HD smart television for streaming and everyday viewing.", Price = 3999.00m, ShippingCost = 149.00m, StoreName = "Game", Category = "Electronics", Color = "Black", Size = "32 inch", CreatedAt = now },
-        new() { Name = "Woolworths Cotton Chino Shirt", Description = "Classic cotton shirt for work or weekends.", Price = 499.00m, ShippingCost = 60.00m, StoreName = "Woolworths", Category = "Clothing", Color = "Navy", Size = "M", CreatedAt = now },
+        new() { Name = "Checkers Family Grocery Hamper", Description = "Pantry staples with maize meal, rice, pasta, tinned food, and tea.", Price = 549.99m, ShippingCost = 35.00m, StoreName = "Checkers", StoreUrl = "https://shop.checkers.co.za/product/family-grocery-hamper", Category = "Groceries", Size = "Family Pack", CreatedAt = now },
+        new() { Name = "Samsung 32-inch Smart TV", Description = "HD smart television for streaming and everyday viewing.", Price = 3999.00m, ShippingCost = 149.00m, StoreName = "Game", StoreUrl = "https://www.game.co.za/product/samsung-32-inch-smart-tv", Category = "Electronics", Color = "Black", Size = "32 inch", CreatedAt = now },
+        new() { Name = "Woolworths Cotton Chino Shirt", Description = "Classic cotton shirt for work or weekends.", Price = 499.00m, ShippingCost = 60.00m, StoreName = "Woolworths", StoreUrl = "https://www.woolworths.co.za/prod/cotton-chino-shirt", Category = "Clothing", Color = "Navy", Size = "M", CreatedAt = now },
         new() { Name = "Pick n Pay School Shoes", Description = "Durable black lace-up school shoes.", Price = 349.99m, ShippingCost = 45.00m, StoreName = "Pick n Pay", Category = "Shoes", Color = "Black", Size = "7", CreatedAt = now },
         new() { Name = "Makro Best of South African Cooking", Description = "Recipe book featuring local family favourites.", Price = 229.00m, ShippingCost = 55.00m, StoreName = "Makro", Category = "Books", CreatedAt = now }
     };
@@ -326,9 +327,9 @@ static void EnsureShoppingAssistantTestProducts(ApplicationDbContext context)
     var products = new[]
     {
         new Product { Name = "Velocity Red Running Shoe", Description = "Lightweight red running shoe for daily training.", Price = 449.99m, ShippingCost = 0m, StoreName = "SportScene", Category = "Shoes", Color = "Red", Size = "8", CreatedAt = now },
-        new Product { Name = "Budget Android Smartphone", Description = "Affordable smartphone with mobile apps, camera, and long battery life.", Price = 1899.00m, ShippingCost = 59.00m, StoreName = "Takealot", Category = "Electronics", Color = "Black", Size = "One Size", CreatedAt = now },
-        new Product { Name = "Essentials Grocery Basket", Description = "Groceries with rice, pasta, tinned food, tea, and pantry basics.", Price = 289.99m, ShippingCost = 35.00m, StoreName = "Checkers", Category = "Groceries", Size = "Basket", CreatedAt = now },
-        new Product { Name = "Formal Navy Jacket", Description = "Smart formal jacket suitable for work, events, and interviews.", Price = 749.00m, ShippingCost = 60.00m, StoreName = "Woolworths", Category = "Outerwear", Color = "Navy", Size = "M", CreatedAt = now }
+        new Product { Name = "Budget Android Smartphone", Description = "Affordable smartphone with mobile apps, camera, and long battery life.", Price = 1899.00m, ShippingCost = 59.00m, StoreName = "Takealot", StoreUrl = "https://www.takealot.com/budget-android-smartphone/PLID123456", Category = "Electronics", Color = "Black", Size = "One Size", CreatedAt = now },
+        new Product { Name = "Essentials Grocery Basket", Description = "Groceries with rice, pasta, tinned food, tea, and pantry basics.", Price = 289.99m, ShippingCost = 35.00m, StoreName = "Checkers", StoreUrl = "https://shop.checkers.co.za/product/essentials-grocery-basket", Category = "Groceries", Size = "Basket", CreatedAt = now },
+        new Product { Name = "Formal Navy Jacket", Description = "Smart formal jacket suitable for work, events, and interviews.", Price = 749.00m, ShippingCost = 60.00m, StoreName = "Woolworths", StoreUrl = "https://www.woolworths.co.za/prod/formal-navy-jacket", Category = "Outerwear", Color = "Navy", Size = "M", CreatedAt = now }
     };
 
     foreach (var product in products)
@@ -337,6 +338,26 @@ static void EnsureShoppingAssistantTestProducts(ApplicationDbContext context)
         {
             context.Products.Add(product);
         }
+    }
+
+    context.SaveChanges();
+}
+
+static void EnsureStoreUrls(ApplicationDbContext context)
+{
+    var urlsByProductName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Checkers Family Grocery Hamper"] = "https://shop.checkers.co.za/product/family-grocery-hamper",
+        ["Samsung 32-inch Smart TV"] = "https://www.game.co.za/product/samsung-32-inch-smart-tv",
+        ["Woolworths Cotton Chino Shirt"] = "https://www.woolworths.co.za/prod/cotton-chino-shirt",
+        ["Budget Android Smartphone"] = "https://www.takealot.com/budget-android-smartphone/PLID123456",
+        ["Essentials Grocery Basket"] = "https://shop.checkers.co.za/product/essentials-grocery-basket",
+        ["Formal Navy Jacket"] = "https://www.woolworths.co.za/prod/formal-navy-jacket"
+    };
+
+    foreach (var product in context.Products.Where(product => string.IsNullOrWhiteSpace(product.StoreUrl)))
+    {
+        if (urlsByProductName.TryGetValue(product.Name, out var storeUrl)) product.StoreUrl = storeUrl;
     }
 
     context.SaveChanges();

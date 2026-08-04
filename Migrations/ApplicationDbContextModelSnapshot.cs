@@ -161,6 +161,10 @@ namespace AIShoppingAssistant.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("StoreUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
                     b.HasKey("Id");
 
                     b.ToTable("Products");

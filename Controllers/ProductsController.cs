@@ -2,6 +2,8 @@ using AIShoppingAssistant.Data;
 using AIShoppingAssistant.DTOs;
 using AIShoppingAssistant.Models;
 using AIShoppingAssistant.Services;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -163,6 +165,32 @@ public class ProductsController : ControllerBase
         }
     }
 
+    [Authorize]
+    [HttpPost("{id:int}/visit")]
+    public async Task<IActionResult> VisitStore(int id, CancellationToken cancellationToken)
+    {
+        var product = await _context.Products.AsNoTracking()
+            .SingleOrDefaultAsync(existingProduct => existingProduct.Id == id, cancellationToken);
+        if (product is null) return NotFound(new { message = "Product not found." });
+
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return Unauthorized();
+
+        var destination = GetDestination(product);
+        _context.SearchHistories.Add(new SearchHistory
+        {
+            UserId = userId,
+            SearchTerm = $"Store visit: {product.Name}",
+            Budget = 0m,
+            Location = product.StoreName,
+            SearchDate = DateTime.UtcNow,
+            ResultsCount = 1
+        });
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { url = destination, storeName = product.StoreName, hasProductUrl = !string.IsNullOrWhiteSpace(product.StoreUrl) });
+    }
+
     private ProductResponseDto MapProductResponse(Product product, GeoCoordinates? origin = null)
     {
         return new ProductResponseDto
@@ -175,6 +203,7 @@ public class ProductsController : ControllerBase
             Size = product.Size,
             ShippingCost = product.ShippingCost,
             StoreName = product.StoreName,
+            StoreUrl = product.StoreUrl,
             StoreAddress = product.Store?.Address,
             DistanceKm = origin is not null && product.Store is not null
                 ? Math.Round(StoreService.CalculateDistanceInKilometers(origin, new GeoCoordinates
@@ -186,6 +215,24 @@ public class ProductsController : ControllerBase
             Category = product.Category,
             ImageUrl = _fileUploadService.GetImageUrl(product.ImageFileName),
             CreatedAt = product.CreatedAt
+        };
+    }
+
+    private static string? GetDestination(Product product)
+    {
+        if (Uri.TryCreate(product.StoreUrl, UriKind.Absolute, out var storeUri) &&
+            (storeUri.Scheme == Uri.UriSchemeHttp || storeUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return storeUri.AbsoluteUri;
+        }
+
+        return product.StoreName.Trim().ToLowerInvariant() switch
+        {
+            "woolworths" => "https://www.woolworths.co.za/",
+            "takealot" => "https://www.takealot.com/",
+            "checkers" => "https://shop.checkers.co.za/",
+            "game" => "https://www.game.co.za/",
+            _ => null
         };
     }
 }
