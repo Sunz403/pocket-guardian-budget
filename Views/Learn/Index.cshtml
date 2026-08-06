@@ -1,0 +1,90 @@
+@{
+    ViewData["Title"] = "Learn Budgeting";
+    var tips = new[]
+    {
+        ("50/30/20 Rule", "Put 50% toward needs, 30% toward wants, and 20% toward saving or debt."),
+        ("Track Every Rand", "Use an app, notes, or a simple spreadsheet to see where your money goes."),
+        ("Set Realistic Goals", "Give your money a purpose: a textbook this month or a trip next semester."),
+        ("Avoid Impulse Buying", "Wait 24 hours before buying something that was not in your plan."),
+        ("Cook at Home", "Plan a few easy meals and pack lunch to stretch your food budget."),
+        ("Use Student Discounts", "Always ask—your student card can save on transport, software, and more."),
+        ("Build an Emergency Fund", "Start small. Even R50 set aside regularly makes unexpected costs less stressful."),
+        ("Review Weekly", "Check your spending once a week so small slips do not become big surprises.")
+    };
+    var methods = new[]
+    {
+        ("50/30/20 Rule", "A flexible starting point that splits income between needs, wants, and your future."),
+        ("Zero-Based Budgeting", "Give every rand a job before the month starts, so income minus planned spending equals zero."),
+        ("Envelope System", "Set spending limits by category. Use cash envelopes or digital category balances."),
+        ("Pay Yourself First", "Move money into savings as soon as you are paid, then plan the rest around what remains.")
+    };
+    var videos = new[]
+    {
+        ("How to Budget as a Student", "pDRlqrZe-NY"),
+        ("The 50/30/20 Rule Explained", "F-8jv1pT1Q4"),
+        ("How to Save Money in University", "ZV1V8H9kQ1E"),
+        ("Budgeting Apps for Students", "aR_zMkjd7pY"),
+        ("Financial Literacy for Beginners", "HQzoZfc3GwQ")
+    };
+}
+
+<div class="learn-page">
+    <section class="learn-hero">
+        <div>
+            <p class="learn-eyebrow">STUDENT MONEY SKILLS</p>
+            <h1>Master Your Money <span aria-hidden="true">💰</span></h1>
+            <p>Learn how to budget, save, and make smart financial decisions as a student.</p>
+            <a class="learn-hero-button" href="#quick-tips">Start learning <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="learn-hero-art" aria-hidden="true"><span>R</span><div class="learn-book">Budget<br />Basics</div><i>✦</i></div>
+    </section>
+
+    <div class="learn-layout">
+        <div class="learn-content">
+            <section id="quick-tips" class="learn-section">
+                <div class="learn-section-heading"><p>START HERE</p><h2>Small habits, big difference</h2><span>Pick one tip to try this week.</span></div>
+                <div class="learn-tips-grid">
+                    @foreach (var tip in tips)
+                    {
+                        <article class="learn-tip-card"><div class="learn-tip-icon">✓</div><h3>@tip.Item1</h3><p>@tip.Item2</p></article>
+                    }
+                </div>
+            </section>
+
+            <section id="methods" class="learn-section">
+                <div class="learn-section-heading"><p>FIND YOUR METHOD</p><h2>Budgeting that fits your life</h2></div>
+                <div class="learn-methods">
+                    @foreach (var method in methods)
+                    {
+                        <article><span>0@(Array.IndexOf(methods, method) + 1)</span><div><h3>@method.Item1</h3><p>@method.Item2</p></div></article>
+                    }
+                </div>
+            </section>
+
+            <section id="watch" class="learn-section">
+                <div class="learn-section-heading"><p>WATCH &amp; LEARN</p><h2>Helpful video guides</h2><span>Short lessons to help you put these ideas into action.</span></div>
+                <div class="learn-video-grid">
+                    @foreach (var video in videos)
+                    {
+                        <article class="learn-video-card"><div class="learn-video-frame"><iframe src="https://www.youtube-nocookie.com/embed/@video.Item2" title="@video.Item1" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div><h3>@video.Item1</h3></article>
+                    }
+                </div>
+            </section>
+
+            <section id="faq" class="learn-section">
+                <div class="learn-section-heading"><p>QUESTIONS, ANSWERED</p><h2>Budgeting FAQ</h2></div>
+                <div class="learn-faq">
+                    <details open><summary>How much should I save each month?</summary><p>Aim for a consistent amount you can afford. Starting with 5–10% or a fixed R50 is better than waiting for a “perfect” amount.</p></details>
+                    <details><summary>What if I overspend?</summary><p>Do not give up on the month. Notice what happened, reduce a flexible category if you can, and adjust next week’s plan.</p></details>
+                    <details><summary>How do I start budgeting with no money?</summary><p>Start by tracking income and essentials. A budget is a plan for the money you have now, not a requirement to already have savings.</p></details>
+                    <details><summary>Should I use cash or card?</summary><p>Use the method that makes spending visible to you. Cash can create firm limits, while a card works well when you check your balance and categories regularly.</p></details>
+                </div>
+            </section>
+        </div>
+
+        <aside class="learn-sidebar">
+            <section class="learn-callout"><span aria-hidden="true">✦</span><h2>One simple rule</h2><blockquote>“Don’t tell your money where it went. Tell it where to go.”</blockquote><a href="/Budget/Index">Open my budget →</a></section>
+            <section class="learn-resources"><p>STUDENT RESOURCES</p><h2>Useful next steps</h2><a href="https://www.nsfas.org.za/" target="_blank" rel="noopener">NSFAS information <span>↗</span></a><a href="https://www.gov.za/about-sa/education" target="_blank" rel="noopener">Financial aid information <span>↗</span></a><a href="https://www.bankseta.org.za/" target="_blank" rel="noopener">Financial literacy resources <span>↗</span></a><a href="~/downloads/student-budget-template.csv" download>Download budget template <span>↓</span></a></section>
+        </aside>
+    </div>
+</div>
