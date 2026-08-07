@@ -1,106 +1,65 @@
+using System.Text.Json;
 using AIShoppingAssistant.Data;
 using AIShoppingAssistant.DTOs;
 using AIShoppingAssistant.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using System.Text.Json;
 
 namespace AIShoppingAssistant.Services;
 
-public sealed class RecommendationService
+/// <summary>
+/// A deterministic recommendation engine.  The score bands deliberately do not overlap,
+/// so a store match always outranks a category match, and so on.
+/// </summary>
+public sealed class RecommendationService : IPersonalizedRecommendation
 {
-    private readonly IAIService _aiService;
+    private const string CachePrefix = "personalized-recommendations:user:";
     private readonly ApplicationDbContext _context;
     private readonly IMemoryCache _cache;
-    private readonly ILogger<RecommendationService> _logger;
     private readonly FileUploadService _fileUploadService;
 
     public RecommendationService(
-        IAIService aiService,
         ApplicationDbContext context,
         IMemoryCache cache,
-        ILogger<RecommendationService> logger,
         FileUploadService fileUploadService)
     {
-        _aiService = aiService;
         _context = context;
         _cache = cache;
-        _logger = logger;
         _fileUploadService = fileUploadService;
     }
 
-    public async Task<List<RecommendedProductDto>> GetPersonalizedRecommendationsAsync(
+    public async Task<IReadOnlyList<PersonalizedRecommendationDto>> GetPersonalizedRecommendationsAsync(
         int userId,
         int limit = 10,
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(userId);
         limit = Math.Clamp(limit, 1, 10);
-        var cacheKey = $"recommendations:user:{userId}:limit:{limit}";
+        var cacheKey = $"{CachePrefix}{userId}:limit:{limit}";
 
-        try
+        return await _cache.GetOrCreateAsync(cacheKey, async entry =>
         {
-            var result = await _cache.GetOrCreateAsync(cacheKey, async entry =>
-            {
-                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30);
-
-            // The recent searches are intentionally loaded for the user's recommendation context.
-            var recentSearches = await _context.SearchHistories
-                .AsNoTracking()
-                .Where(search => search.UserId == userId)
-                .OrderByDescending(search => search.SearchDate)
-                .Take(10)
-                .ToListAsync(cancellationToken);
-            var preferences = await _context.UserPreferences
-                .AsNoTracking()
-                .SingleOrDefaultAsync(preference => preference.UserId == userId, cancellationToken)
-                ?? BuildPreferencesFromSearches(userId, recentSearches);
-            var products = await _context.Products.AsNoTracking().ToListAsync(cancellationToken);
-            var currentBudget = await GetCurrentBudgetAsync(userId, cancellationToken);
-            var availableBudget = currentBudget is null
-                ? recentSearches.FirstOrDefault()?.Budget ?? 0m
-                : Math.Max(0m, currentBudget.MonthlyAmount - currentBudget.CurrentSpending);
-
-                var aiResult = await _aiService.GetRecommendationAsync(
-                    products, availableBudget, preferences, cancellationToken);
-                var productsById = products.ToDictionary(product => product.Id);
-
-                return aiResult.Recommendations
-                    .Where(recommendation => productsById.ContainsKey(recommendation.ProductId))
-                    .Take(limit)
-                    .Select(recommendation => Map(productsById[recommendation.ProductId], recommendation))
-                    .ToList();
-            });
-
-            return result ?? new List<RecommendedProductDto>();
-        }
-        catch (LocalAIUnavailableException ex)
-        {
-            // Do not cache a service outage; the next request can retry once Ollama is running.
-            _logger.LogError(ex, "Local Ollama model was unavailable while recommending products for user {UserId}.", userId);
-            return new List<RecommendedProductDto>();
-        }
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30);
+            return await BuildRecommendationsAsync(userId, limit, cancellationToken);
+        }) ?? [];
     }
 
-    public async Task<BudgetSummaryDto> GetBudgetSummaryAsync(int userId, CancellationToken cancellationToken = default)
+    // Kept as the concise API requested by callers; the Async suffix is available for .NET convention.
+    public Task<IReadOnlyList<PersonalizedRecommendationDto>> GetPersonalizedRecommendations(
+        int userId,
+        int limit = 10,
+        CancellationToken cancellationToken = default) =>
+        GetPersonalizedRecommendationsAsync(userId, limit, cancellationToken);
+
+    public void InvalidateUserCache(int userId)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(userId);
-        var budget = await GetCurrentBudgetAsync(userId, cancellationToken);
-        if (budget is null)
-            return new BudgetSummaryDto();
+        for (var limit = 1; limit <= 10; limit++)
+            _cache.Remove($"{CachePrefix}{userId}:limit:{limit}");
 
-        var remaining = budget.MonthlyAmount - budget.CurrentSpending;
-        return new BudgetSummaryDto
-        {
-            BudgetAmount = budget.MonthlyAmount,
-            CurrentSpending = budget.CurrentSpending,
-            RemainingAmount = remaining,
-            PercentageUsed = budget.MonthlyAmount == 0m
-                ? 0m
-                : Math.Round((budget.CurrentSpending / budget.MonthlyAmount) * 100m, 2)
-        };
+        _cache.Remove($"infinite-recommendations:user:{userId}");
     }
 
+    // Kept for the existing infinite-scroll API. It uses the same scoring and reasons.
     public async Task<InfiniteRecommendationResponseDto> GetInfiniteRecommendationsAsync(
         int userId, int page, int pageSize, string? category, decimal? minPrice, decimal? maxPrice,
         CancellationToken cancellationToken = default)
@@ -108,120 +67,199 @@ public sealed class RecommendationService
         var cacheKey = $"infinite-recommendations:user:{userId}";
         var ranked = await _cache.GetOrCreateAsync(cacheKey, async entry =>
         {
-            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
-            return await BuildInfiniteRecommendationsAsync(userId, cancellationToken);
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30);
+            return await BuildRecommendationsAsync(userId, int.MaxValue, cancellationToken);
         }) ?? [];
 
         var filtered = ranked.Where(item =>
-            (string.IsNullOrWhiteSpace(category) || item.Product.Category.Equals(category.Trim(), StringComparison.OrdinalIgnoreCase)) &&
-            (!minPrice.HasValue || item.Product.Price >= minPrice.Value) &&
-            (!maxPrice.HasValue || item.Product.Price <= maxPrice.Value)).ToList();
-        var products = filtered.Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(item => new InfiniteRecommendedProductDto
-            {
-                Id = item.Product.Id, Name = item.Product.Name, Description = item.Product.Description,
-                Price = item.Product.Price, Color = item.Product.Color, Size = item.Product.Size,
-                StoreName = item.Product.StoreName, Category = item.Product.Category,
-                ImageFileName = item.Product.ImageFileName,
-                ImageUrl = _fileUploadService.GetImageUrl(item.Product.ImageFileName),
-                Reason = item.Reason, ReasonType = item.ReasonType, AddedToShoppingList = item.AddedToShoppingList
-            }).ToList();
+            (string.IsNullOrWhiteSpace(category) || item.Category.Equals(category.Trim(), StringComparison.OrdinalIgnoreCase)) &&
+            (!minPrice.HasValue || item.Price >= minPrice.Value) &&
+            (!maxPrice.HasValue || item.Price <= maxPrice.Value)).ToList();
 
         return new InfiniteRecommendationResponseDto
         {
-            Products = products, TotalCount = filtered.Count, Page = page,
+            Products = filtered.Skip((page - 1) * pageSize).Take(pageSize).Select(item => new InfiniteRecommendedProductDto
+            {
+                Id = item.Id, Name = item.Name, Description = item.Description, Price = item.Price,
+                Color = item.Color, Size = item.Size, StoreName = item.StoreName, Category = item.Category,
+                ImageUrl = item.ImageUrl, Reason = item.Reason, ReasonType = item.ReasonType
+            }).ToList(),
+            TotalCount = filtered.Count,
+            Page = page,
             HasMore = page * pageSize < filtered.Count
         };
     }
 
-    private async Task<List<RankedRecommendation>> BuildInfiniteRecommendationsAsync(int userId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<PersonalizedRecommendationDto>> BuildRecommendationsAsync(
+        int userId, int limit, CancellationToken cancellationToken)
     {
+        // Run database operations sequentially: a DbContext does not support concurrent queries.
         var products = await _context.Products.AsNoTracking().ToListAsync(cancellationToken);
         var preferences = await _context.UserPreferences.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken) ?? new UserPreference();
-        var selectedItems = await _context.ShoppingListItems.AsNoTracking().Where(item => item.UserId == userId).ToListAsync(cancellationToken);
-        var searches = await _context.SearchHistories.AsNoTracking().Where(item => item.UserId == userId).ToListAsync(cancellationToken);
-        var purchases = await _context.PurchaseHistories.AsNoTracking().Where(item => item.UserId == userId).ToListAsync(cancellationToken);
-        var allSelectedItems = await _context.ShoppingListItems.AsNoTracking().ToListAsync(cancellationToken);
+            .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken) ?? new UserPreference { UserId = userId };
+        var purchases = await _context.PurchaseHistories.AsNoTracking()
+            .Where(item => item.UserId == userId).ToListAsync(cancellationToken);
+        var searches = await _context.SearchHistories.AsNoTracking()
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.SearchDate).Take(10).ToListAsync(cancellationToken);
         var allPurchases = await _context.PurchaseHistories.AsNoTracking().ToListAsync(cancellationToken);
+        var allListItems = await _context.ShoppingListItems.AsNoTracking().ToListAsync(cancellationToken);
+        var allSearches = await _context.SearchHistories.AsNoTracking().ToListAsync(cancellationToken);
 
-        var purchasedIds = ExtractProductIds(purchases);
-        var userProductIds = purchasedIds.Concat(selectedItems.Select(item => item.ProductId)).ToHashSet();
-        var userProducts = products.Where(item => userProductIds.Contains(item.Id)).ToList();
-        var storeCounts = userProducts.GroupBy(item => item.StoreName).ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-        var categoryCounts = userProducts.GroupBy(item => item.Category).ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-        var popularCounts = allSelectedItems.GroupBy(item => item.ProductId).ToDictionary(group => group.Key, group => group.Count());
-        foreach (var productId in ExtractProductIds(allPurchases)) popularCounts[productId] = popularCounts.GetValueOrDefault(productId) + 1;
-        var searchTerms = searches.Select(item => item.SearchTerm).Where(term => !string.IsNullOrWhiteSpace(term)).ToList();
+        var productById = products.ToDictionary(item => item.Id);
+        var ownPurchaseSignals = ReadPurchaseSignals(purchases, productById);
+        var allPurchaseSignals = ReadPurchaseSignals(allPurchases, productById);
+        var storeCounts = Count(ownPurchaseSignals.Select(item => item.StoreName));
+        var categoryCounts = Count(ownPurchaseSignals.Select(item => item.Category));
+        var popularProductCounts = allPurchaseSignals.Where(item => item.ProductId > 0)
+            .GroupBy(item => item.ProductId).ToDictionary(group => group.Key, group => group.Count());
+        foreach (var item in allListItems)
+            popularProductCounts[item.ProductId] = popularProductCounts.GetValueOrDefault(item.ProductId) + 1;
 
-        return products.Select(product =>
+        var recentSearches = searches.Select(item => item.SearchTerm).Where(IsUsefulSearch).ToList();
+        var priceRange = await GetPreferredPriceRange(preferences, userId, cancellationToken);
+        var globalSearchTerms = allSearches.Select(item => item.SearchTerm).Where(IsUsefulSearch).ToList();
+
+        var ranked = new List<PersonalizedRecommendationDto>(products.Count);
+        foreach (var product in products)
         {
-            var score = 0;
-            var reason = "Popular with shoppers";
-            var reasonType = "popular";
-            if (storeCounts.TryGetValue(product.StoreName, out var storeCount) && storeCount > 0)
+            var match = GetHighestPriorityMatch(product, preferences, storeCounts, categoryCounts, recentSearches, priceRange);
+            var popularity = popularProductCounts.GetValueOrDefault(product.Id) +
+                             globalSearchTerms.Count(term => SearchMatches(product, term));
+
+            // Popularity only breaks ties within a higher-priority band. It is the fifth fallback.
+            var score = match.Score + Math.Min(popularity, 99);
+            if (match.Score == 0 && popularity > 0)
+                match = new RecommendationMatch(1, "Popular with other students", "popular");
+
+            ranked.Add(new PersonalizedRecommendationDto
             {
-                score += 500 + storeCount * 10; reason = $"You often shop at {product.StoreName}"; reasonType = "purchase_history";
-            }
-            else if (categoryCounts.TryGetValue(product.Category, out var categoryCount) && categoryCount > 0)
-            {
-                score += 400 + categoryCount * 10; reason = $"Based on your {product.Category} purchases"; reasonType = "purchase_history";
-            }
-            else if (MatchesPreferences(product, preferences, searchTerms))
-            {
-                score += 300; reason = "Matches your saved preferences"; reasonType = "preferences";
-            }
-            else if (preferences.PreferredPriceRangeMax > 0 && product.Price >= preferences.PreferredPriceRangeMin && product.Price <= preferences.PreferredPriceRangeMax)
-            {
-                score += 200; reason = "Within your preferred price range"; reasonType = "price_range";
-            }
-            score += popularCounts.GetValueOrDefault(product.Id);
-            return new RankedRecommendation(product, score, reason, reasonType, selectedItems.Any(item => item.ProductId == product.Id));
-        }).OrderByDescending(item => item.Score).ThenBy(item => item.Product.Name).ToList();
+                Id = product.Id,
+                Name = product.Name,
+                Description = product.Description,
+                Price = product.Price,
+                Color = product.Color,
+                Size = product.Size,
+                StoreName = product.StoreName,
+                Category = product.Category,
+                ImageUrl = _fileUploadService.GetImageUrl(product.ImageFileName),
+                Reason = match.Reason,
+                ReasonType = match.ReasonType,
+                Score = score
+            });
+        }
+
+        return ranked.OrderByDescending(item => item.Score)
+            .ThenBy(item => item.Name)
+            .Take(limit)
+            .ToList();
     }
 
-    private static bool MatchesPreferences(Product product, UserPreference preferences, IEnumerable<string> searches)
+    private async Task<(decimal Min, decimal Max)> GetPreferredPriceRange(
+        UserPreference preferences, int userId, CancellationToken cancellationToken)
     {
-        var text = $"{product.Name} {product.Description} {product.Category} {product.Color}";
-        return preferences.FavoriteStores.Any(value => product.StoreName.Equals(value, StringComparison.OrdinalIgnoreCase)) ||
-               preferences.FavoriteColors.Any(value => string.Equals(product.Color, value, StringComparison.OrdinalIgnoreCase)) ||
-               preferences.FavoriteStyles.Concat(searches).Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
-    }
+        if (preferences.PreferredPriceRangeMax > 0)
+            return (preferences.PreferredPriceRangeMin, preferences.PreferredPriceRangeMax);
 
-    private static IEnumerable<int> ExtractProductIds(IEnumerable<PurchaseHistory> purchases) => purchases.SelectMany(purchase =>
-    {
-        try { return JsonSerializer.Deserialize<List<PurchaseItemSnapshotDto>>(purchase.Items)?.Select(item => item.ProductId) ?? []; }
-        catch (JsonException) { return []; }
-    });
-
-    private sealed record RankedRecommendation(Product Product, int Score, string Reason, string ReasonType, bool AddedToShoppingList);
-
-    private async Task<Budget?> GetCurrentBudgetAsync(int userId, CancellationToken cancellationToken)
-    {
         var now = DateTime.UtcNow;
-        return await _context.Budgets.AsNoTracking().SingleOrDefaultAsync(budget =>
-            budget.UserId == userId && budget.Month == now.Month && budget.Year == now.Year,
-            cancellationToken);
+        var budget = await _context.Budgets.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.UserId == userId && item.Month == now.Month && item.Year == now.Year, cancellationToken);
+        return budget is null ? (0m, 0m) : (0m, Math.Max(0m, budget.MonthlyAmount - budget.CurrentSpending));
     }
 
-    private static UserPreference BuildPreferencesFromSearches(int userId, IEnumerable<SearchHistory> searches) => new()
+    private static RecommendationMatch GetHighestPriorityMatch(
+        Product product,
+        UserPreference preferences,
+        IReadOnlyDictionary<string, int> storeCounts,
+        IReadOnlyDictionary<string, int> categoryCounts,
+        IReadOnlyList<string> recentSearches,
+        (decimal Min, decimal Max) priceRange)
     {
-        UserId = userId,
-        FavoriteStyles = searches.Select(search => search.SearchTerm).Take(4).ToList()
-    };
+        // 100,000 / 10,000 / 1,000 / 100 / 1 are non-overlapping priority bands.
+        if (storeCounts.TryGetValue(product.StoreName, out var storeCount))
+            return new(100_000 + Math.Min(storeCount, 99), "You've bought from this store before", "favorite_store");
 
-    private RecommendedProductDto Map(Product product, ProductRecommendation recommendation) => new()
+        var favoriteStore = preferences.FavoriteStores.FirstOrDefault(value =>
+            value.Equals(product.StoreName, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(favoriteStore))
+            return new(100_000, $"Matches your favorite store: {favoriteStore}", "favorite_store");
+
+        if (categoryCounts.TryGetValue(product.Category, out var categoryCount))
+            return new(10_000 + Math.Min(categoryCount, 99), $"Based on your {product.Category} purchases", "purchase_history");
+
+        var color = preferences.FavoriteColors.FirstOrDefault(value =>
+            !string.IsNullOrWhiteSpace(product.Color) && value.Equals(product.Color, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(color))
+            return new(1_000, $"Matches your favorite color: {color}", "favorite_color");
+
+        var style = preferences.FavoriteStyles.FirstOrDefault(value => TextMatches(product, value));
+        if (!string.IsNullOrWhiteSpace(style))
+            return new(1_000, $"Matches your favorite style: {style}", "favorite_style");
+
+        var search = recentSearches.FirstOrDefault(value => SearchMatches(product, value));
+        if (!string.IsNullOrWhiteSpace(search))
+            return new(1_000, $"Related to your recent search: {DisplaySearch(search)}", "recent_search");
+
+        if (priceRange.Max > 0 && product.Price >= priceRange.Min && product.Price <= priceRange.Max)
+            return new(100, "Within your preferred price range", "price_range");
+
+        return new(0, "Popular with other students", "popular");
+    }
+
+    private static List<PurchaseSignal> ReadPurchaseSignals(
+        IEnumerable<PurchaseHistory> purchases, IReadOnlyDictionary<int, Product> products)
     {
-        Id = product.Id,
-        Name = product.Name,
-        Price = product.Price,
-        ShippingCost = product.ShippingCost,
-        StoreName = product.StoreName,
-        Category = product.Category,
-        Color = product.Color,
-        Size = product.Size,
-        ImageUrl = _fileUploadService.GetImageUrl(product.ImageFileName),
-        AiExplanation = recommendation.Reason,
-        AiScore = recommendation.Score
-    };
+        var result = new List<PurchaseSignal>();
+        foreach (var purchase in purchases)
+        {
+            try
+            {
+                foreach (var item in JsonSerializer.Deserialize<List<PurchaseItemSnapshotDto>>(purchase.Items) ?? [])
+                {
+                    products.TryGetValue(item.ProductId, out var product);
+                    result.Add(new PurchaseSignal(item.ProductId,
+                        product?.StoreName ?? item.StoreName,
+                        product?.Category ?? item.Category));
+                }
+            }
+            catch (JsonException)
+            {
+                // One malformed historical snapshot should not hide all recommendations.
+            }
+        }
+        return result.Where(item => !string.IsNullOrWhiteSpace(item.StoreName) || !string.IsNullOrWhiteSpace(item.Category)).ToList();
+    }
+
+    private static Dictionary<string, int> Count(IEnumerable<string> values) => values
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .GroupBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+    private static bool TextMatches(Product product, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var text = $"{product.Name} {product.Description} {product.Category} {product.Color}";
+        return text.Contains(value.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SearchMatches(Product product, string search)
+    {
+        var term = DisplaySearch(search);
+        if (TextMatches(product, term)) return true;
+        var text = $"{product.Name} {product.Description} {product.Category} {product.StoreName}";
+        var words = term.Split([' ', ',', '-', ':'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(word => word.Length >= 3 && !StopWords.Contains(word)).ToList();
+        return words.Count > 0 && words.Any(word => text.Contains(word, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsUsefulSearch(string? search) => !string.IsNullOrWhiteSpace(search) &&
+        !search.StartsWith("Store visit:", StringComparison.OrdinalIgnoreCase);
+
+    private static string DisplaySearch(string search) => search.Replace("Store visit:", "", StringComparison.OrdinalIgnoreCase).Trim();
+
+    private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
+    { "the", "and", "for", "with", "near", "from", "deals", "best", "shop", "products" };
+
+    private sealed record PurchaseSignal(int ProductId, string StoreName, string Category);
+    private sealed record RecommendationMatch(int Score, string Reason, string ReasonType);
 }
