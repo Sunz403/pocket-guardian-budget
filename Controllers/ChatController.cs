@@ -133,7 +133,7 @@ public sealed class ChatController : ControllerBase
             session.EndedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
         }
-        Response.Cookies.Delete(SessionCookie);
+        DeleteSessionCookie();
         return NoContent();
     }
 
@@ -150,8 +150,14 @@ public sealed class ChatController : ControllerBase
         var session = new ChatSession { UserId = userId };
         _db.ChatSessions.Add(session);
         await _db.SaveChangesAsync(cancellationToken);
-        Response.Cookies.Append(SessionCookie, session.Id, new CookieOptions { HttpOnly = true, Secure = Request.IsHttps, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromDays(30) });
+        Response.Cookies.Append(SessionCookie, session.Id, new CookieOptions { HttpOnly = true, Secure = Request.IsHttps, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromDays(30), Path = "/" });
         return session;
+    }
+
+    private void DeleteSessionCookie()
+    {
+        Response.Cookies.Delete(SessionCookie, new CookieOptions { Path = "/" });
+        Response.Cookies.Delete(SessionCookie, new CookieOptions { Path = "/api/chat" });
     }
 
     private async Task<string> BuildContextAsync(int userId, IReadOnlyCollection<Product> products, Product? changedProduct, string? shoppingListAction, CancellationToken cancellationToken)

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using AIShoppingAssistant.Data;
 using AIShoppingAssistant.DTOs;
 using AIShoppingAssistant.Models;
+using AIShoppingAssistant.Services;
 using AIShoppingAssistant.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,15 +16,18 @@ public class PreferencesController : Controller
     private readonly ApplicationDbContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PreferencesController> _logger;
+    private readonly IPersonalizedRecommendation _recommendations;
 
     public PreferencesController(
         ApplicationDbContext context,
         IHttpClientFactory httpClientFactory,
-        ILogger<PreferencesController> logger)
+        ILogger<PreferencesController> logger,
+        IPersonalizedRecommendation recommendations)
     {
         _context = context;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _recommendations = recommendations;
     }
 
     [HttpGet("/Preferences/Index")]
@@ -127,6 +131,7 @@ public class PreferencesController : Controller
             preference.PreferredPriceRangeMax = preferenceDto.PreferredPriceRangeMax;
 
             await _context.SaveChangesAsync();
+            _recommendations.InvalidateUserCache(userId);
 
             return Ok(MapPreference(preference));
         }
@@ -161,6 +166,7 @@ public class PreferencesController : Controller
                 preference.FavoriteStores.Add(normalizedStoreName);
                 preference.FavoriteStores = NormalizeDistinctList(preference.FavoriteStores);
                 await _context.SaveChangesAsync();
+                _recommendations.InvalidateUserCache(userId);
             }
 
             return Ok(MapPreference(preference));
@@ -196,6 +202,7 @@ public class PreferencesController : Controller
             if (removedCount > 0)
             {
                 await _context.SaveChangesAsync();
+                _recommendations.InvalidateUserCache(userId);
             }
 
             return Ok(MapPreference(preference));

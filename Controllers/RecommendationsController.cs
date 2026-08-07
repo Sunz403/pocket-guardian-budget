@@ -11,9 +11,21 @@ namespace AIShoppingAssistant.Controllers;
 [Route("api/recommendations")]
 public sealed class RecommendationsController : ControllerBase
 {
-    private readonly RecommendationService _recommendations;
+    private readonly IPersonalizedRecommendation _recommendations;
 
-    public RecommendationsController(RecommendationService recommendations) => _recommendations = recommendations;
+    public RecommendationsController(IPersonalizedRecommendation recommendations) => _recommendations = recommendations;
+
+    [HttpGet("personalized")]
+    [ProducesResponseType(typeof(IReadOnlyList<PersonalizedRecommendationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<PersonalizedRecommendationDto>>> Personalized(
+        [FromQuery] int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 10) return BadRequest(new { message = "limit must be between 1 and 10." });
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)) return Unauthorized();
+
+        return Ok(await _recommendations.GetPersonalizedRecommendationsAsync(userId, limit, cancellationToken));
+    }
 
     [HttpGet("infinite")]
     [ProducesResponseType(typeof(InfiniteRecommendationResponseDto), StatusCodes.Status200OK)]
