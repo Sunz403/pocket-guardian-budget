@@ -175,9 +175,10 @@ public class BudgetController : Controller
 
         var purchases = await GetMonthlyPurchases(userId, month, year, cancellationToken);
         var rows = await BuildSpendingRows(purchases, cancellationToken);
-        var currentSpending = rows.Sum(row => row.Amount);
+        // Purchase history is the shared source of truth for every budget view.
+        var currentSpending = purchases.Sum(purchase => purchase.TotalAmount);
         var monthlyAmount = budget?.MonthlyAmount ?? 0m;
-        var remaining = monthlyAmount - currentSpending;
+        var remaining = Math.Max(0m, monthlyAmount - currentSpending);
         var percentageUsed = monthlyAmount <= 0m ? 0m : Math.Round(currentSpending / monthlyAmount * 100m, 2);
 
         return new BudgetSummary(monthlyAmount, currentSpending, remaining, percentageUsed);
@@ -198,7 +199,7 @@ public class BudgetController : Controller
                 purchase.UserId == userId &&
                 purchase.PurchaseDate >= start &&
                 purchase.PurchaseDate < end)
-            .Select(purchase => new PurchaseSnapshot(purchase.PurchaseDate, purchase.Items))
+            .Select(purchase => new PurchaseSnapshot(purchase.PurchaseDate, purchase.Items, purchase.TotalAmount))
             .ToListAsync(cancellationToken);
     }
 
@@ -286,7 +287,7 @@ public class BudgetController : Controller
         decimal Remaining,
         decimal PercentageUsed);
 
-    private sealed record PurchaseSnapshot(DateTime PurchaseDate, string Items);
+    private sealed record PurchaseSnapshot(DateTime PurchaseDate, string Items, decimal TotalAmount);
 
     private sealed record SpendingRow(
         DateTime Date,

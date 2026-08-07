@@ -154,7 +154,7 @@ public class BudgetsController : ControllerBase
             UserId = budget.UserId,
             MonthlyAmount = budget.MonthlyAmount,
             CurrentSpending = budget.CurrentSpending,
-            RemainingAmount = budget.MonthlyAmount - budget.CurrentSpending,
+            RemainingAmount = Math.Max(0m, budget.MonthlyAmount - budget.CurrentSpending),
             Month = budget.Month,
             Year = budget.Year
         };

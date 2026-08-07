@@ -13,6 +13,7 @@ namespace AIShoppingAssistant.Controllers;
 [AllowAnonymous]
 public class AccountController : Controller
 {
+    private const string ChatSessionCookie = "AIShopping.ChatSession";
     private readonly ApplicationDbContext _context;
 
     public AccountController(ApplicationDbContext context)
@@ -110,6 +111,7 @@ public class AccountController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Logout()
     {
+        await ClearActiveChatSessionsAsync();
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return RedirectToAction(nameof(Login));
     }
@@ -128,6 +130,34 @@ public class AccountController : Controller
         }
 
         return RedirectToAction("Index", "Home");
+    }
+
+    private async Task ClearActiveChatSessionsAsync()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (int.TryParse(userId, out var parsedUserId))
+        {
+            var sessions = await _context.ChatSessions
+                .Where(chatSession => chatSession.UserId == parsedUserId && chatSession.EndedAt == null)
+                .ToListAsync();
+
+            if (sessions.Count > 0)
+            {
+                var sessionIds = sessions.Select(session => session.Id).ToList();
+                var messages = _context.ChatMessages.Where(message =>
+                    message.UserId == parsedUserId && sessionIds.Contains(message.ChatSessionId));
+                _context.ChatMessages.RemoveRange(messages);
+                foreach (var session in sessions)
+                {
+                    session.EndedAt = DateTime.UtcNow;
+                }
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        Response.Cookies.Delete(ChatSessionCookie, new CookieOptions { Path = "/" });
+        Response.Cookies.Delete(ChatSessionCookie, new CookieOptions { Path = "/api/chat" });
     }
 
     private static IEnumerable<Claim> GetClaims(User user)
