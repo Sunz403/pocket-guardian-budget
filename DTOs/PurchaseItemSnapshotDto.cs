@@ -11,4 +11,7 @@ public sealed class PurchaseItemSnapshotDto
     public int Quantity { get; init; }
     public decimal LineTotal { get; init; }
     public DateTime AddedDate { get; init; }
+    public string StoreName { get; init; } = string.Empty;
+    public string Category { get; init; } = string.Empty;
+    public string? Color { get; init; }
 }
