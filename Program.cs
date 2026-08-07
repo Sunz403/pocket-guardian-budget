@@ -69,7 +69,7 @@ builder.Services.AddScoped<MockAIService>();
 builder.Services.AddScoped<AIServiceFactory>();
 builder.Services.AddScoped<IAIService>(serviceProvider =>
     serviceProvider.GetRequiredService<AIServiceFactory>().Create());
-builder.Services.AddScoped<RecommendationService>();
+builder.Services.AddScoped<IPersonalizedRecommendation, RecommendationService>();
 builder.Services.AddScoped<LocationService>();
 builder.Services.AddScoped<StoreService>();
 builder.Services.AddScoped<FileUploadService>();
@@ -97,6 +97,7 @@ using (var scope = app.Services.CreateScope())
     EnsureChatSchema(context);
     SeedStores(context);
     SeedDatabase(context);
+    EnsureDemoPurchaseHistory(context);
     EnsureStoreUrls(context);
     LinkProductsToStores(context);
 }
@@ -363,6 +364,35 @@ static void EnsureStoreUrls(ApplicationDbContext context)
     context.SaveChanges();
 }
 
+// This also supports databases created before recommendations were introduced.
+// Fresh databases are already populated in SeedDatabase; this fills only missing demo history.
+static void EnsureDemoPurchaseHistory(ApplicationDbContext context)
+{
+    var demos = new[]
+    {
+        ("thabo.mokoena@example.co.za", "Checkers Family Grocery Hamper"),
+        ("lerato.dlamini@example.co.za", "Woolworths Cotton Chino Shirt"),
+        ("sipho.nkosi@example.co.za", "Samsung 32-inch Smart TV"),
+        ("nomsa.maseko@example.co.za", "Pick n Pay School Shoes"),
+        ("andile.khumalo@example.co.za", "Makro Best of South African Cooking")
+    };
+    var users = context.Users.Where(user => demos.Select(demo => demo.Item1).Contains(user.Email)).ToList();
+    var products = context.Products.Where(product => demos.Select(demo => demo.Item2).Contains(product.Name)).ToList();
+    var purchaseDate = DateTime.UtcNow.AddDays(-7);
+
+    foreach (var (email, productName) in demos)
+    {
+        var user = users.SingleOrDefault(item => item.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
+        var product = products.SingleOrDefault(item => item.Name.Equals(productName, StringComparison.OrdinalIgnoreCase));
+        if (user is null || product is null) continue;
+
+        var hasPurchase = context.PurchaseHistories.Where(item => item.UserId == user.Id)
+            .AsEnumerable().Any(item => item.Items.Contains($"\"ProductId\":{product.Id}", StringComparison.Ordinal));
+        if (!hasPurchase) context.PurchaseHistories.Add(BuildPurchase(user.Id, product, 1, purchaseDate));
+    }
+    context.SaveChanges();
+}
+
 static void EnsureCurrentMonthBudgets(ApplicationDbContext context)
 {
     var now = DateTime.UtcNow;
@@ -414,7 +444,10 @@ static PurchaseHistory BuildPurchase(int userId, Product product, int quantity, 
             Price = product.Price,
             Quantity = quantity,
             LineTotal = lineTotal,
-            AddedDate = purchaseDate
+            AddedDate = purchaseDate,
+            StoreName = product.StoreName,
+            Category = product.Category,
+            Color = product.Color
         }
     };
 
